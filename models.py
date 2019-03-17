@@ -279,14 +279,17 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
 
 
         self.W_r_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_r_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
+        self.W_z_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
         self.W_h_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
+        self.W_r_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(0, 0.1))
+        self.W_z_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(0, 0.1))
+        self.W_h_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(0, 0.1))
         self.W_r = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
         self.W_z = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
         self.W_h = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_r_output = nn.Parameter(torch.empty(self.emb_size, self.vocab_size).uniform_(0, 0.1))
-        self.W_z_output = nn.Parameter(torch.empty(self.emb_size, self.vocab_size).uniform_(0, 0.1))
-        self.W_h_output = nn.Parameter(torch.empty(self.emb_size, self.vocab_size).uniform_(0, 0.1))
+        self.W_r_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(0, 0.1))
+        self.W_z_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(0, 0.1))
+        self.W_h_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(0, 0.1))
 
         self.U_r = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
         self.U_z = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
@@ -331,10 +334,10 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
                 h_t = torch.zeros(self.batch_size, self.hidden_size)
 
             #Input layer
-            import pdb; pdb.set_trace()
-            r_t += F.sigmoid(self.W_r[0].matmul(self.encoder(inputs[t].float().matmul(self.W_r_emb).long())) + self.U_r[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
-            z_t += F.sigmoid(self.W_z[0].matmul(self.encoder(inputs[t].float().matmul(self.W_z_emb).long())) + self.U_z[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
-            h_t += F.sigmoid(self.W_h[0].matmul(self.encoder(inputs[t].float().matmul(self.W_h_emb).long())) + self.U_h[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            # import pdb; pdb.set_trace()
+            r_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_r_emb).long()).matmul(self.W_r_input[0]) + self.U_r[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            z_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_z_emb).long()).matmul(self.W_z_input[0]) + self.U_z[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            h_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_h_emb).long()).matmul(self.W_h_input[0]) + self.U_h[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
 
             hiddens[t][0] += (1 - z_t) * hiddens[t - 1][0].clone() + z_t * h_t
 
