@@ -108,7 +108,7 @@ parser = argparse.ArgumentParser(description='PyTorch Penn Treebank Language Mod
 parser.add_argument('--data', type=str, default='data',
                     help='location of the data corpus. We suggest you change the default\
                     here, rather than passing as an argument, to avoid long file paths.')
-parser.add_argument('--model', type=str, default='GRU',
+parser.add_argument('--model', type=str, default='RNN',
                     help='type of recurrent net (RNN, GRU, TRANSFORMER)')
 parser.add_argument('--optimizer', type=str, default='SGD_LR_SCHEDULE',
                     help='optimization algo to use; SGD, SGD_LR_SCHEDULE, ADAM')
@@ -160,10 +160,8 @@ argsdict['code_file'] = sys.argv[0]
 # Use the model, optimizer, and the flags passed to the script to make the 
 # name for the experimental dir
 print("\n########## Setting Up Experiment ######################")
-flags = [flag.lstrip('--').replace('/', '').replace('\', '') for flag in sys.argv[1:]]
-         experiment_path = os.path.join(args.save_dir + '_'.join([argsdict['model'],
-                                                                  argsdict['optimizer']]
-                                                                 + flags))
+flags = [flag.lstrip('--').replace('/', '').replace('\\', '') for flag in sys.argv[1:]]
+experiment_path = os.path.join(args.save_dir + '_'.join([argsdict['model'], argsdict['optimizer']] + flags))
 
 # Increment a counter so that previous results with the same args will not
 # be overwritten. Comment out the next four lines if you only want to keep
@@ -196,7 +194,7 @@ else:
 ###############################################################################
 #
 # 
-LOADING & PROCESSING
+# LOADING & PROCESSING
 
 
 #
@@ -329,6 +327,7 @@ else:
     print("Model type not recognized.")
 
 model = model.to(device)
+print("device is = ", model)
 
 # LOSS FUNCTION
 loss_fn = nn.CrossEntropyLoss()
@@ -360,7 +359,7 @@ def repackage_hidden(h):
     This is the case with the way we've processed the Penn Treebank dataset.
     """
     if isinstance(h, Variable):
-        return h.detach_()
+        return h.detach()
     else:
         return tuple(repackage_hidden(v) for v in h)
 
@@ -418,7 +417,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
                 for p in model.parameters():
                     if p.grad is not None:
                         p.data.add_(-lr, p.grad.data)
-            if step % (epoch_size // 10) == 10:
+            if step % 100 == 0:
                 print('step: ' + str(step) + '\t'
                       + "loss (sum over all examples' seen this epoch):"
                       + str(costs) + '\t' + 'speed (wps):'
