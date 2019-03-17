@@ -304,12 +304,11 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
         self.b_h_output = nn.Parameter(torch.zeros(self.batch_size, self.vocab_size))
 
     def init_weights_uniform(self):
-        print('todo')
+        print('init_weights_uniform GRU')
 
     # TODO ========================
 
     def init_hidden(self):
-        print('todo')
         # TODO ========================
         # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
         return  torch.zeros(self.num_layers, self.batch_size, self.hidden_size)
