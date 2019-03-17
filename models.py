@@ -191,7 +191,7 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
             # Input Layer
             hiddens[t][0] += torch.transpose(self.tanh(self.bW_hidden[0] + state_last_layer + previous_net_update), 0, 1)
 
-            # Hidden Layers
+            # Hidden Layers TODO HIDDEN LAYER
             for layer in range(1, self.num_layers):
                 if torch.cuda.is_available():
                     previous_net_update = torch.zeros(self.hidden_size, self.batch_size).cuda()
@@ -201,10 +201,9 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
                     previous_net_update = torch.zeros(self.hidden_size, self.batch_size)
                     state_last_layer = torch.zeros(self.hidden_size, self.batch_size)
                     temp = torch.zeros(self.hidden_size, self.emb_size)
-                previous_net_update += self.W_hidden_previous_layer[layer].clone().matmul(torch.transpose(self.dropout(hiddens[t-1][layer - 1].clone()), 0, 1))
-                state_last_layer += self.W_hidden_last_t[layer].clone().matmul(torch.transpose(hiddens[t][layer-1].clone(), 0, 1))
-                hiddens[t][layer] += torch.transpose(self.tanh(
-                    self.bW_hidden[layer] + previous_net_update + state_last_layer + self.bW_hidden[layer]), 0, 1)
+                previous_net_update += self.W_hidden_last_t[layer].clone().matmul(torch.transpose(hiddens[t-1][layer].clone(), 0, 1))
+                state_last_layer += self.W_hidden_previous_layer[layer].clone().matmul(torch.transpose(self.dropout(hiddens[t][layer-1].clone()), 0, 1))
+                hiddens[t][layer] += torch.transpose(self.tanh(previous_net_update + state_last_layer + self.bW_hidden[layer]), 0, 1)
 
             # Output Layer
             if torch.cuda.is_available():
@@ -278,6 +277,10 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
 
         self.k = math.sqrt(1/self.hidden_size)
 
+
+        self.W_r_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
+        self.W_r_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
+        self.W_h_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
         self.W_r = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
         self.W_z = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
         self.W_h = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
@@ -312,11 +315,9 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
         if torch.cuda.is_available():
             logits = torch.zeros(self.seq_len, self.batch_size, self.vocab_size).cuda()
             hiddens = torch.zeros(self.seq_len, self.num_layers, self.batch_size, self.hidden_size).cuda()
-            input_emb = torch.zeros(self.seq_len, self.batch_size, self.emb_size).cuda()
         else:
             logits = torch.zeros(self.seq_len, self.batch_size, self.vocab_size)
             hiddens = torch.zeros(self.seq_len, self.num_layers, self.batch_size, self.hidden_size)
-            input_emb = torch.zeros(self.seq_len, self.batch_size, self.emb_size)
         hiddens[0] += hidden
 
         for t in range(1, self.seq_len): # + 1
@@ -330,9 +331,10 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
                 h_t = torch.zeros(self.batch_size, self.hidden_size)
 
             #Input layer
-            r_t += F.sigmoid(self.W_r[0].matmul(self.encoder(inputs[t]).float()) + self.U_r[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
-            z_t += F.sigmoid(self.W_z[0].matmul(self.encoder(inputs[t]).float()) + self.U_z[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
-            h_t += F.sigmoid(self.W_h[0].matmul(self.encoder(inputs[t]).float()) + self.U_h[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            import pdb; pdb.set_trace()
+            r_t += F.sigmoid(self.W_r[0].matmul(self.encoder(inputs[t].float().matmul(self.W_r_emb).long())) + self.U_r[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            z_t += F.sigmoid(self.W_z[0].matmul(self.encoder(inputs[t].float().matmul(self.W_z_emb).long())) + self.U_z[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            h_t += F.sigmoid(self.W_h[0].matmul(self.encoder(inputs[t].float().matmul(self.W_h_emb).long())) + self.U_h[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
 
             hiddens[t][0] += (1 - z_t) * hiddens[t - 1][0].clone() + z_t * h_t
 

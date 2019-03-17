@@ -161,7 +161,7 @@ argsdict['code_file'] = sys.argv[0]
 # name for the experimental dir
 print("\n########## Setting Up Experiment ######################")
 flags = [flag.lstrip('--').replace('/', '').replace('\\', '') for flag in sys.argv[1:]]
-experiment_path = os.path.join(args.save_dir + '_'.join([argsdict['model'], argsdict['optimizer']] + flags))
+experiment_path = os.path.join('results/' + args.save_dir + '_'.join([argsdict['model'], argsdict['optimizer']] + flags))
 
 # Increment a counter so that previous results with the same args will not
 # be overwritten. Comment out the next four lines if you only want to keep
