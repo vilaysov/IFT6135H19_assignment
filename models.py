@@ -88,16 +88,19 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         self.encoder = nn.Embedding(self.vocab_size, self.emb_size)
         self.decoder = nn.Linear(self.hidden_size, self.vocab_size)
 
-        
+
+
+        self.k = math.sqrt(1/self.hidden_size)        
         # Initialize the embedding and output weights uniformly in the range [-0.1, 0.1]
-        self.W_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_init = nn.Parameter(torch.empty(self.hidden_size, self.emb_size).uniform_(0, 0.1))
-        self.W_output = nn.Parameter(torch.empty(self.vocab_size, self.hidden_size).uniform_(-0.1, 0.1))
+        # self.W_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
+        self.W_init = nn.Parameter(torch.empty(self.hidden_size, self.emb_size).uniform_(-self.k, self.k))
+        
         
         # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
         # in the range [-k, k] where k is the square root of 1/hidden_size
-        self.k = math.sqrt(1/self.hidden_size)
+        
 
+        self.W_output = nn.Parameter(torch.empty(self.vocab_size, self.hidden_size).uniform_(-0.1, 0.1))
         self.W_hidden_last_t = nn.Parameter(torch.empty(self.num_layers, self.hidden_size, self.hidden_size).uniform_(-self.k, self.k))
         self.W_hidden_previous_layer = nn.Parameter(torch.empty(self.num_layers, self.hidden_size, self.hidden_size).uniform_(-self.k, self.k))
         
@@ -186,7 +189,8 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
             previous_net_update += torch.transpose(hiddens[t-1][0].clone().matmul(self.W_hidden_last_t[0].clone()), 0, 1)
             
             # import pdb; pdb.set_trace()
-            state_last_layer += self.W_init.matmul(torch.transpose(self.dropout(self.encoder((inputs[t].float().matmul(self.W_emb)).long())), 0, 1))
+            # state_last_layer += self.W_init.matmul(torch.transpose(self.dropout(self.encoder((inputs[t].float().matmul(self.W_emb)).long())), 0, 1))
+            state_last_layer += self.W_init.matmul(torch.transpose(self.dropout(self.encoder(inputs[t])), 0, 1))
             
             # Input Layer
             hiddens[t][0] += torch.transpose(self.tanh(self.bW_hidden[0] + state_last_layer + previous_net_update), 0, 1)
@@ -278,22 +282,24 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
         self.k = math.sqrt(1/self.hidden_size)
 
 
-        self.W_r_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_z_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_h_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_r_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(0, 0.1))
-        self.W_z_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(0, 0.1))
-        self.W_h_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(0, 0.1))
-        self.W_r = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_z = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_h = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.W_r_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(0, 0.1))
-        self.W_z_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(0, 0.1))
-        self.W_h_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(0, 0.1))
+        # self.W_r_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
+        # self.W_z_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
+        # self.W_h_emb = nn.Parameter(torch.empty(self.batch_size, self.batch_size).uniform_(0, 0.1))
 
-        self.U_r = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.U_z = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
-        self.U_h = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(0, 0.1))
+        self.W_r_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(-self.k, self.k))
+        self.W_z_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(-self.k, self.k))
+        self.W_h_input = nn.Parameter(torch.empty(self.num_layers, self.emb_size, self.hidden_size).uniform_(-self.k, self.k))
+        self.W_r = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(-self.k, self.k))
+        self.W_z = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(-self.k, self.k))
+        self.W_h = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(-self.k, self.k))
+
+        self.W_r_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(-0.1, 0.1))
+        self.W_z_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(-0.1, 0.1))
+        self.W_h_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(-0.1, 0.1))
+
+        self.U_z = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(-self.k, self.k))
+        self.U_r = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(-self.k, self.k))
+        self.U_h = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.batch_size).uniform_(-self.k, self.k))
 
         self.b_r = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.hidden_size).uniform_(-self.k, self.k))
         self.b_z = nn.Parameter(torch.empty(self.num_layers, self.batch_size, self.hidden_size).uniform_(-self.k, self.k))
@@ -334,9 +340,12 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
 
             #Input layer
             # import pdb; pdb.set_trace()
-            r_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_r_emb).long()).matmul(self.W_r_input[0]) + self.U_r[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
-            z_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_z_emb).long()).matmul(self.W_z_input[0]) + self.U_z[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
-            h_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_h_emb).long()).matmul(self.W_h_input[0]) + self.U_h[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            # r_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_r_emb).long()).matmul(self.W_r_input[0]) + self.U_r[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            # z_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_z_emb).long()).matmul(self.W_z_input[0]) + self.U_z[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            # h_t += F.sigmoid(self.encoder(inputs[t].float().matmul(self.W_h_emb).long()).matmul(self.W_h_input[0]) + self.U_h[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            z_t += F.sigmoid(self.encoder(inputs[t].long()).matmul(self.W_z_input[0]) + self.U_z[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            r_t += F.sigmoid(self.encoder(inputs[t].long()).matmul(self.W_r_input[0]) + self.U_r[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
+            h_t += F.sigmoid(self.encoder(inputs[t].long()).matmul(self.W_h_input[0]) + self.U_h[0].matmul(hiddens[t - 1][0].clone()) + self.b_r[0])
 
             hiddens[t][0] += (1 - z_t) * hiddens[t - 1][0].clone() + z_t * h_t
 
