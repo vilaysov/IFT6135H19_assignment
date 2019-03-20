@@ -222,14 +222,14 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
                         shape: (num_layers, batch_size, hidden_size)
         """
         logits = create_tensor3(self.seq_len, self.batch_size, self.vocab_size)
-        hiddens = create_tensor4(self.seq_len, self.num_layers, self.batch_size, self.hidden_size)
+        hiddens = create_tensor4(self.seq_len + 1, self.num_layers, self.batch_size, self.hidden_size)
         input_emb = create_tensor3(self.seq_len, self.batch_size, self.emb_size)
         hiddens[0] += hidden
 
         input_emb = self.embedding(inputs)
 
-        for t in range(1, self.seq_len): # + 1
-            state_last_layer = self.dropout(input_emb[t])
+        for t in range(1, self.seq_len + 1): # + 1
+            state_last_layer = self.dropout(input_emb[t - 1])
             
             # Input Layer
             hiddens[t][0] += self.forward_layers[0](state_last_layer, hiddens[t-1][0].clone())
@@ -239,7 +239,7 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
                 state_last_layer = self.dropout(hiddens[t][layer-1].clone()) 
                 hiddens[t][layer] += self.forward_layers[layer](state_last_layer, hiddens[t-1][layer].clone())
 
-            logits[t] += self.decoder(self.dropout(hiddens[t][self.num_layers-1].clone()))
+            logits[t-1] += self.decoder(self.dropout(hiddens[t][self.num_layers-1].clone()))
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len - 1]
 
@@ -374,13 +374,13 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
 
     def forward(self, inputs, hidden):
         logits = create_tensor3(self.seq_len, self.batch_size, self.vocab_size)
-        hiddens = create_tensor4(self.seq_len, self.num_layers, self.batch_size, self.hidden_size)
+        hiddens = create_tensor4(self.seq_len + 1, self.num_layers, self.batch_size, self.hidden_size)
         hiddens[0] += hidden
 
         x_embs = self.embedding(inputs)
-        for t in range(1, self.seq_len):
+        for t in range(1, self.seq_len + 1):
             #Input layer
-            hiddens[t][0] += self.forward_layers[0](self.dropout(x_embs[t]), hiddens[t - 1][0].clone())
+            hiddens[t][0] += self.forward_layers[0](self.dropout(x_embs[t - 1]), hiddens[t - 1][0].clone())
 
             # hidden layers
             for layer in range(1, self.num_layers):
@@ -388,7 +388,7 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
                 hiddens[t][layer] += self.forward_layers[layer](x_dropout, hiddens[t - 1][layer].clone())
 
             #Last layer
-            logits[t] += self.decoder(self.dropout(hiddens[t][self.num_layers - 1].clone()))
+            logits[t - 1] += self.decoder(self.dropout(hiddens[t][self.num_layers - 1].clone()))
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len - 1]
 
