@@ -201,42 +201,24 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         input_emb = self.embedding(inputs)
 
         for t in range(1, self.seq_len): # + 1
-            previous_net_update = create_tensor2(self.hidden_size, self.batch_size)
-            state_last_layer = create_tensor2(self.hidden_size, self.batch_size)
-            temp = create_tensor2(self.hidden_size, self.emb_size)
-            x_inputs = create_tensor2(self.batch_size, self.vocab_size)
-
             # compute first
-            previous_net_update += torch.transpose(hiddens[t-1][0].clone().matmul(self.W_hidden_last_t[0].clone()), 0, 1)
-            
-            # for word in range(self.batch_size):
-                # x_inputs[word][inputs[t][word]] += 1
-
+            previous_net_update = torch.transpose(hiddens[t-1][0].clone().matmul(self.W_hidden_last_t[0].clone()), 0, 1)
 
             # state_last_layer += self.W_init.matmul(self.dropout(self.W_emb.matmul(torch.transpose(x_inputs, 0, 1))))
-            state_last_layer += self.W_init.matmul(self.dropout(torch.transpose(input_emb[t], 0, 1)))
+            state_last_layer = self.W_init.matmul(self.dropout(torch.transpose(input_emb[t], 0, 1)))
             
             # Input Layer
             hiddens[t][0] += torch.transpose(self.tanh(self.bW_hidden[0] + state_last_layer + previous_net_update), 0, 1)
 
             # Hidden Layers TODO HIDDEN LAYER
             for layer in range(1, self.num_layers):
-                previous_net_update = create_tensor2(self.hidden_size, self.batch_size)
-                state_last_layer = create_tensor2(self.hidden_size, self.batch_size)
-                temp = create_tensor2(self.hidden_size, self.emb_size)
-                previous_net_update += self.W_hidden_last_t[layer].clone().matmul(torch.transpose(hiddens[t-1][layer].clone(), 0, 1))
-                state_last_layer += self.W_hidden_previous_layer[layer].clone().matmul(torch.transpose(self.dropout(hiddens[t][layer-1].clone()), 0, 1))
+                previous_net_update = self.W_hidden_last_t[layer].clone().matmul(torch.transpose(hiddens[t-1][layer].clone(), 0, 1))
+                state_last_layer = self.W_hidden_previous_layer[layer].clone().matmul(torch.transpose(self.dropout(hiddens[t][layer-1].clone()), 0, 1))
                 hiddens[t][layer] += torch.transpose(self.tanh(previous_net_update + state_last_layer + self.bW_hidden[layer]), 0, 1)
 
             # Output Layer
-            previous_net_update = create_tensor2(self.hidden_size, self.batch_size)
-            state_last_layer = create_tensor2(self.batch_size, self.vocab_size)
-            temp = create_tensor2(self.hidden_size, self.emb_size)
-            outputs = create_tensor1(self.batch_size)
+            state_last_layer = self.dropout(hiddens[t][self.num_layers - 1]).matmul(self.W_output)
 
-            state_last_layer += self.dropout(hiddens[t][self.num_layers - 1]).matmul(self.W_output)
-            
-            # import pdb; pdb.set_trace()
             logits[t] += state_last_layer + self.bW_output
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len - 1]
@@ -276,6 +258,8 @@ class GRU_Hidden(nn.Module):
 
         self.output = output
         self.batch_size = batch_size
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
         
         # r
         self.linear_W_r = nn.Linear(input, output, False)
@@ -310,14 +294,9 @@ class GRU_Hidden(nn.Module):
         nn.init.uniform_(self.linear_U_h.bias, a=-k, b=k)
 
     def forward(self, x, hidden_last_t):
-        r_t = create_tensor2(self.batch_size, self.output)
-        z_t = create_tensor2(self.batch_size, self.output)
-        h_t = create_tensor2(self.batch_size, self.output)
-
-        # import pdb; pdb.set_trace()
-        r_t += torch.sigmoid(self.linear_W_r(x) + self.linear_U_r(hidden_last_t))
-        z_t += torch.sigmoid(self.linear_W_z(x) + self.linear_U_z(hidden_last_t))
-        h_t += torch.tanh(self.linear_W_h(x) + self.linear_U_h(torch.mul(r_t, hidden_last_t)))
+        r_t = torch.sigmoid(self.linear_W_r(x) + self.linear_U_r(hidden_last_t))
+        z_t = torch.sigmoid(self.linear_W_z(x) + self.linear_U_z(hidden_last_t))
+        h_t = torch.tanh(self.linear_W_h(x) + self.linear_U_h(torch.mul(r_t, hidden_last_t)))
         return torch.mul((1 - z_t), hidden_last_t) + torch.mul(z_t, h_t)
         
 
@@ -380,24 +359,16 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
 
         x_embs = self.embedding(inputs)
         for t in range(1, self.seq_len):
-            x_emb_dropout = create_tensor2(self.batch_size, self.emb_size)
-
             #Input layer
-            x_emb_dropout += self.dropout(x_embs[t])
-            hiddens[t][0] += self.forward_layers[0](x_emb_dropout, hiddens[t - 1][0].clone())
+            hiddens[t][0] += self.forward_layers[0](self.dropout(x_embs[t]), hiddens[t - 1][0].clone())
 
             # hidden layers
             for layer in range(1, self.num_layers):
-                x_dropout = create_tensor2(self.batch_size, self.hidden_size)
-
-                x_dropout += self.dropout(hiddens[t][layer - 1].clone())
+                x_dropout = self.dropout(hiddens[t][layer - 1].clone())
                 hiddens[t][layer] += self.forward_layers[layer](x_dropout, hiddens[t - 1][layer].clone())
 
             #Last layer
-            x_dropout = create_tensor2(self.batch_size, self.hidden_size)
-
-            x_dropout += self.dropout(hiddens[t][self.num_layers - 1].clone())
-            logits[t] += self.decoder(x_dropout)
+            logits[t] += self.decoder(self.dropout(hiddens[t][self.num_layers - 1].clone()))
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len - 1]
 
