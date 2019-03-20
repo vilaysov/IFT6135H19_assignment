@@ -71,6 +71,30 @@ def create_tensor4(arg_1, arg_2, arg_3, arg_4):
         return torch.zeros(arg_1, arg_2, arg_3, arg_4)
 
 
+class RNN_Hidden(nn.Module):
+    def __init__(self, input, output, batch_size):
+        super(RNN_Hidden, self).__init__()
+
+        self.output = output
+        self.batch_size = batch_size
+        self.tanh = nn.Tanh()
+        
+        self.linear_W = nn.Linear(input, output, False)
+        self.linear_W_h = nn.Linear(output, output, True)
+
+        self.init_weights_uniform()
+
+    def init_weights_uniform(self):
+        k = math.sqrt(1/self.output)
+
+        nn.init.uniform_(self.linear_W.weight, a=-k, b=k,)
+        nn.init.uniform_(self.linear_W_h.weight, a=-k, b=k)
+        nn.init.uniform_(self.linear_W_h.bias, a=-k, b=k)
+
+    def forward(self, x, hidden_last_t):
+        h_t = torch.tanh(self.linear_W(x) + self.linear_W_h(hidden_last_t))
+        return h_t
+
 # Problem 1
 class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearities.
     def __init__(self, emb_size, hidden_size, seq_len, batch_size, vocab_size, num_layers, dp_keep_prob):
@@ -115,7 +139,10 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         self.embedding = nn.Embedding(num_embeddings = self.vocab_size, embedding_dim = self.emb_size)
         self.decoder = nn.Linear(self.hidden_size, self.vocab_size)
 
-
+        self.forward_layer = RNN_Hidden(self.hidden_size, self.hidden_size, self.batch_size)
+        self.first_forward_layer = RNN_Hidden(self.emb_size, self.hidden_size, self.batch_size)
+        self.forward_layers = clones(self.forward_layer, self.num_layers)
+        self.forward_layers.insert(0, self.first_forward_layer)
 
         self.k = math.sqrt(1/self.hidden_size)        
         # Initialize the embedding and output weights uniformly in the range [-0.1, 0.1]
@@ -143,9 +170,10 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         # and output biases to 0 (in place). The embeddings should not use a bias vector.
         # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
         # in the range [-k, k] where k is the square root of 1/hidden_size
-        print('init_weights')
-        
         nn.init.uniform_(self.embedding.weight, a=-0.1, b=0.1)
+        
+        nn.init.uniform_(self.decoder.weight, a=-0.1, b=0.1)
+        nn.init.zeros_(self.decoder.bias)
 
     def init_hidden(self):
         # TODO ========================
@@ -201,25 +229,17 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         input_emb = self.embedding(inputs)
 
         for t in range(1, self.seq_len): # + 1
-            # compute first
-            previous_net_update = torch.transpose(hiddens[t-1][0].clone().matmul(self.W_hidden_last_t[0].clone()), 0, 1)
-
-            # state_last_layer += self.W_init.matmul(self.dropout(self.W_emb.matmul(torch.transpose(x_inputs, 0, 1))))
-            state_last_layer = self.W_init.matmul(self.dropout(torch.transpose(input_emb[t], 0, 1)))
+            state_last_layer = self.dropout(input_emb[t])
             
             # Input Layer
-            hiddens[t][0] += torch.transpose(self.tanh(self.bW_hidden[0] + state_last_layer + previous_net_update), 0, 1)
+            hiddens[t][0] += self.forward_layers[0](state_last_layer, hiddens[t-1][0].clone())
 
-            # Hidden Layers TODO HIDDEN LAYER
+            # Hidden Layers 
             for layer in range(1, self.num_layers):
-                previous_net_update = self.W_hidden_last_t[layer].clone().matmul(torch.transpose(hiddens[t-1][layer].clone(), 0, 1))
-                state_last_layer = self.W_hidden_previous_layer[layer].clone().matmul(torch.transpose(self.dropout(hiddens[t][layer-1].clone()), 0, 1))
-                hiddens[t][layer] += torch.transpose(self.tanh(previous_net_update + state_last_layer + self.bW_hidden[layer]), 0, 1)
+                state_last_layer = self.dropout(hiddens[t][layer-1].clone()) 
+                hiddens[t][layer] += self.forward_layers[layer](state_last_layer, hiddens[t-1][layer].clone())
 
-            # Output Layer
-            state_last_layer = self.dropout(hiddens[t][self.num_layers - 1]).matmul(self.W_output)
-
-            logits[t] += state_last_layer + self.bW_output
+            logits[t] += self.decoder(self.dropout(hiddens[t][self.num_layers-1].clone()))
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len - 1]
 
@@ -262,7 +282,7 @@ class GRU_Hidden(nn.Module):
         self.tanh = nn.Tanh()
         
         # r
-        self.linear_W_r = nn.Linear(input, output, False)
+        self.linear_W = nn.Linear(input, output, False)
         self.linear_U_r = nn.Linear(output, output)
 
         # z
@@ -279,7 +299,7 @@ class GRU_Hidden(nn.Module):
         k = math.sqrt(1/self.output)
 
         # r
-        nn.init.uniform_(self.linear_W_r.weight, a=-k, b=k,)
+        nn.init.uniform_(self.linear_W.weight, a=-k, b=k,)
         nn.init.uniform_(self.linear_U_r.weight, a=-k, b=k)
         nn.init.uniform_(self.linear_U_r.bias, a=-k, b=k)
 
@@ -294,7 +314,7 @@ class GRU_Hidden(nn.Module):
         nn.init.uniform_(self.linear_U_h.bias, a=-k, b=k)
 
     def forward(self, x, hidden_last_t):
-        r_t = torch.sigmoid(self.linear_W_r(x) + self.linear_U_r(hidden_last_t))
+        r_t = torch.sigmoid(self.linear_W(x) + self.linear_U_r(hidden_last_t))
         z_t = torch.sigmoid(self.linear_W_z(x) + self.linear_U_z(hidden_last_t))
         h_t = torch.tanh(self.linear_W_h(x) + self.linear_U_h(torch.mul(r_t, hidden_last_t)))
         return torch.mul((1 - z_t), hidden_last_t) + torch.mul(z_t, h_t)
