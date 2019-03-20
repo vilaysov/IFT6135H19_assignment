@@ -112,7 +112,7 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
 
         self.dropout = nn.Dropout(1 - self.dp_keep_prob)
         self.tanh = nn.Tanh()
-        self.encoder = nn.Embedding(num_embeddings = self.vocab_size, embedding_dim = self.emb_size)
+        self.embedding = nn.Embedding(num_embeddings = self.vocab_size, embedding_dim = self.emb_size)
         self.decoder = nn.Linear(self.hidden_size, self.vocab_size)
 
 
@@ -144,6 +144,8 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
         # in the range [-k, k] where k is the square root of 1/hidden_size
         print('init_weights')
+        
+        nn.init.uniform_(self.embedding.weight, a=-0.1, b=0.1)
 
     def init_hidden(self):
         # TODO ========================
@@ -196,6 +198,8 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         input_emb = create_tensor3(self.seq_len, self.batch_size, self.emb_size)
         hiddens[0] += hidden
 
+        input_emb = self.embedding(inputs)
+
         for t in range(1, self.seq_len): # + 1
             previous_net_update = create_tensor2(self.hidden_size, self.batch_size)
             state_last_layer = create_tensor2(self.hidden_size, self.batch_size)
@@ -205,11 +209,12 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
             # compute first
             previous_net_update += torch.transpose(hiddens[t-1][0].clone().matmul(self.W_hidden_last_t[0].clone()), 0, 1)
             
-            for word in range(self.batch_size):
-                x_inputs[word][inputs[t][word]] += 1
+            # for word in range(self.batch_size):
+                # x_inputs[word][inputs[t][word]] += 1
 
 
-            state_last_layer += self.W_init.matmul(self.dropout(self.W_emb.matmul(torch.transpose(x_inputs, 0, 1))))
+            # state_last_layer += self.W_init.matmul(self.dropout(self.W_emb.matmul(torch.transpose(x_inputs, 0, 1))))
+            state_last_layer += self.W_init.matmul(self.dropout(torch.transpose(input_emb[t], 0, 1)))
             
             # Input Layer
             hiddens[t][0] += torch.transpose(self.tanh(self.bW_hidden[0] + state_last_layer + previous_net_update), 0, 1)
