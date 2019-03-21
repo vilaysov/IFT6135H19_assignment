@@ -43,6 +43,9 @@ def clones(module, N):
     """
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
+def clones_param(module, N):
+      return nn.ParameterList([copy.deepcopy(module) for _ in range(N)])
+
 def create_tensor1(arg_1):
     if torch.cuda.is_available():
         return torch.zeros(arg_1).cuda()
