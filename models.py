@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch.autograd import Variable
 
 import numpy as np
-import torch.nn.functional as F
 import math, copy, time
-from torch.autograd import Variable
 import matplotlib.pyplot as plt
 
 
@@ -243,7 +243,6 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
 
         return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len - 1]
 
-
     def generate(self, input, hidden, generated_seq_len):
         # TODO ========================
         # Compute the forward pass, as in the self.forward method (above).
@@ -365,8 +364,6 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
         nn.init.uniform_(self.decoder.weight, a=-0.1, b=0.1)
         nn.init.zeros_(self.decoder.bias)
 
-    # TODO ========================
-
     def init_hidden(self):
         # TODO ========================
         # a parameter tensor of shape (self.num_layers, self.batch_size, self.hidden_size)
@@ -469,6 +466,7 @@ class MultiHeadedAttention(nn.Module):
         # This requires the number of n_heads to evenly divide n_units.
         assert n_units % n_heads == 0
         self.n_units = n_units
+        self.n_heads = n_heads
 
         # TODO: create/initialize any necessary parameters or layers
         # Initialize all weights and biases uniformly in the range [-k, k],
@@ -476,6 +474,28 @@ class MultiHeadedAttention(nn.Module):
         # Note: the only Pytorch modules you are allowed to use are nn.Linear 
         # and nn.Dropout
         # ETA: you can also use softmax
+        k = np.sqrt(1 / self.n_units)
+        self.linears = clones(nn.Linear(n_units, n_units), 4)
+        self.dropout = nn.Dropout(p=dropout)
+
+        self.WQ = clones_param(nn.Parameter(torch.empty(n_units, self.d_k).uniform_(-k, k)), n_heads)
+        self.WK = clones_param(nn.Parameter(torch.empty(n_units, self.d_k).uniform_(-k, k)), n_heads)
+        self.WV = clones_param(nn.Parameter(torch.empty(n_units, self.d_k).uniform_(-k, k)), n_heads)
+        self.Wout = nn.Parameter(torch.empty(n_units, n_units).uniform_(-k, k)) # different dimensions
+        self.bQ = nn.Parameter(torch.zeros(n_units))
+        self.bK = nn.Parameter(torch.zeros(n_units))
+        self.bV = nn.Parameter(torch.zeros(n_units))
+        self.bout = nn.Parameter(torch.zeros(n_units))
+
+    def attention(self, query, key, value, mask=None, dropout=None):
+        "Compute the scaled dot product attention"
+        scores = torch.matmul(query, key.transpose(-2, -1)) / np.sqrt(self.d_k)
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, -1e9)  # Avoid numerical instability
+        p_attn = F.softmax(scores, dim=-1)
+        if dropout is not None:
+            p_attn = dropout(p_attn)
+        return torch.matmul(p_attn, value)
 
     def forward(self, query, key, value, mask=None):
         # TODO: implement the masked multi-head attention.
@@ -485,8 +505,33 @@ class MultiHeadedAttention(nn.Module):
         # As described in the .tex, apply input masking to the softmax 
         # generating the "attention values" (i.e. A_i in the .tex)
         # Also apply dropout to the attention values.
+        if mask is not None:
+            # Same mask applied to all h heads.
+            mask = mask.unsqueeze(1)
 
-        return  # size: (batch_size, seq_len, self.n_units)
+        batch_size = query.size(0)
+        seq_len = query.size(1)
+
+        # Linear transformations
+        q = torch.matmul(query, self.WQ[0])
+        k = torch.matmul(key, self.WK[0])
+        v = torch.matmul(value, self.WV[0])
+        for head in range(1, self.n_heads):
+            q = torch.cat((q, torch.matmul(query, self.WQ[head])), 1)
+            k = torch.cat((k, torch.matmul(key, self.WK[head])), 1)
+            v = torch.cat((v, torch.matmul(value, self.WV[head])), 1)
+        q = q.view(batch_size, self.n_heads, seq_len, self.d_k)
+        k = k.view(batch_size, self.n_heads, seq_len, self.d_k)
+        v = v.view(batch_size, self.n_heads, seq_len, self.d_k)
+
+        # Softmax and mask
+        x = self.attention(q, k, v, mask=mask, dropout=self.dropout)
+
+        # Concatenation
+        x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.n_heads * self.d_k)
+
+        # Linear transformation for output of next encoder
+        return torch.matmul(x, self.Wout)
 
 
 # ----------------------------------------------------------------------------------
