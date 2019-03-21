@@ -75,27 +75,27 @@ def create_tensor4(arg_1, arg_2, arg_3, arg_4):
 
 
 class RNN_Hidden(nn.Module):
-    def __init__(self, input, output, batch_size):
+    def __init__(self, input, output, k):
         super(RNN_Hidden, self).__init__()
-
-        self.output = output
-        self.batch_size = batch_size
+        self.k = k
+        # self.output = output
+        # self.batch_size = batch_size
         self.tanh = nn.Tanh()
         
+        self.linear_W = nn.Linear(input, output, True)
         self.linear_W = nn.Linear(input, output, False)
         self.linear_W_h = nn.Linear(output, output, True)
 
         self.init_weights_uniform()
 
     def init_weights_uniform(self):
-        k = math.sqrt(1/self.output)
-
-        nn.init.uniform_(self.linear_W.weight, a=-k, b=k,)
-        nn.init.uniform_(self.linear_W_h.weight, a=-k, b=k)
-        nn.init.uniform_(self.linear_W_h.bias, a=-k, b=k)
+        nn.init.uniform_(self.linear_W.weight, a=-self.k, b=self.k,)
+        nn.init.uniform_(self.linear_W.bias, a=-self.k, b=self.k,)
+        nn.init.uniform_(self.linear_W_h.weight, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_W_h.bias, a=-self.k, b=self.k)
 
     def forward(self, x, hidden_last_t):
-        h_t = torch.tanh(self.linear_W(x) + self.linear_W_h(hidden_last_t))
+        h_t = self.tanh(self.linear_W(x) + self.linear_W_h(hidden_last_t))
         return h_t
 
 # Problem 1
@@ -138,33 +138,16 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         self.dp_keep_prob = dp_keep_prob
 
         self.dropout = nn.Dropout(1 - self.dp_keep_prob)
-        self.tanh = nn.Tanh()
-        self.embedding = nn.Embedding(num_embeddings = self.vocab_size, embedding_dim = self.emb_size)
+        self.embedding = nn.Embedding(self.vocab_size, self.emb_size)
         self.decoder = nn.Linear(self.hidden_size, self.vocab_size)
 
-        self.forward_layer = RNN_Hidden(self.hidden_size, self.hidden_size, self.batch_size)
-        self.first_forward_layer = RNN_Hidden(self.emb_size, self.hidden_size, self.batch_size)
+        k = math.sqrt(1/self.hidden_size)
+        self.forward_layer = RNN_Hidden(self.hidden_size, self.hidden_size, k)
+        self.first_forward_layer = RNN_Hidden(self.emb_size, self.hidden_size, k)
+
         self.forward_layers = clones(self.forward_layer, self.num_layers)
         self.forward_layers.insert(0, self.first_forward_layer)
 
-        self.k = math.sqrt(1/self.hidden_size)        
-        # Initialize the embedding and output weights uniformly in the range [-0.1, 0.1]
-        self.W_emb = nn.Parameter(torch.empty(self.emb_size, self.vocab_size).uniform_(-0.1, 0.1))
-        self.W_init = nn.Parameter(torch.empty(self.hidden_size, self.emb_size).uniform_(-self.k, self.k))
-        
-        
-        # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
-        # in the range [-k, k] where k is the square root of 1/hidden_size
-        
-
-        self.W_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(-0.1, 0.1))
-        self.W_hidden_last_t = nn.Parameter(torch.empty(self.num_layers, self.hidden_size, self.hidden_size).uniform_(-self.k, self.k))
-        self.W_hidden_previous_layer = nn.Parameter(torch.empty(self.num_layers, self.hidden_size, self.hidden_size).uniform_(-self.k, self.k))
-        
-        self.bW_hidden = nn.Parameter(torch.empty(self.num_layers, self.hidden_size, self.batch_size).uniform_(-self.k, self.k))
-        
-        # and output biases to 0 (in place).
-        self.bW_output = nn.Parameter(torch.zeros(self.batch_size, self.vocab_size))
         self.init_weights()
 
     def init_weights(self):
@@ -275,50 +258,56 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         return samples
 
 class GRU_Hidden(nn.Module):
-    def __init__(self, input, output, batch_size):
+    def __init__(self, input, output, k):
         super(GRU_Hidden, self).__init__()
 
         self.output = output
-        self.batch_size = batch_size
-        self.sigmoid = nn.Sigmoid()
+        self.k = k
+        self.sigmoid_r = nn.Sigmoid()
+        self.sigmoid_z = nn.Sigmoid() # TODO: Remove
         self.tanh = nn.Tanh()
         
         # r
+        # self.linear_W = nn.Linear(input, output)
         self.linear_W = nn.Linear(input, output, False)
         self.linear_U_r = nn.Linear(output, output)
 
         # z
+        # self.linear_W_z = nn.Linear(input, output)
         self.linear_W_z = nn.Linear(input, output, False)
         self.linear_U_z = nn.Linear(output, output)
 
         # h
+        # self.linear_W_h = nn.Linear(input, output)
         self.linear_W_h = nn.Linear(input, output, False)
         self.linear_U_h = nn.Linear(output, output)
 
         self.init_weights_uniform()
 
     def init_weights_uniform(self):
-        k = math.sqrt(1/self.output)
 
         # r
-        nn.init.uniform_(self.linear_W.weight, a=-k, b=k,)
-        nn.init.uniform_(self.linear_U_r.weight, a=-k, b=k)
-        nn.init.uniform_(self.linear_U_r.bias, a=-k, b=k)
+        nn.init.uniform_(self.linear_W.weight, a=-self.k, b=self.k)
+        # nn.init.uniform_(self.linear_W.bias, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_U_r.weight, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_U_r.bias, a=-self.k, b=self.k)
 
         # z
-        nn.init.uniform_(self.linear_W_z.weight, a=-k, b=k)
-        nn.init.uniform_(self.linear_U_z.weight, a=-k, b=k)
-        nn.init.uniform_(self.linear_U_z.bias, a=-k, b=k)
+        nn.init.uniform_(self.linear_W_z.weight, a=-self.k, b=self.k)
+        # nn.init.uniform_(self.linear_W_z.bias, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_U_z.weight, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_U_z.bias, a=-self.k, b=self.k)
 
         # h
-        nn.init.uniform_(self.linear_W_h.weight, a=-k, b=k)
-        nn.init.uniform_(self.linear_U_h.weight, a=-k, b=k)
-        nn.init.uniform_(self.linear_U_h.bias, a=-k, b=k)
+        nn.init.uniform_(self.linear_W_h.weight, a=-self.k, b=self.k)
+        # nn.init.uniform_(self.linear_W_h.bias, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_U_h.weight, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_U_h.bias, a=-self.k, b=self.k)
 
     def forward(self, x, hidden_last_t):
-        r_t = torch.sigmoid(self.linear_W(x) + self.linear_U_r(hidden_last_t))
-        z_t = torch.sigmoid(self.linear_W_z(x) + self.linear_U_z(hidden_last_t))
-        h_t = torch.tanh(self.linear_W_h(x) + self.linear_U_h(torch.mul(r_t, hidden_last_t)))
+        r_t = self.sigmoid_r(self.linear_W(x) + self.linear_U_r(hidden_last_t))
+        z_t = self.sigmoid_z(self.linear_W_z(x) + self.linear_U_z(hidden_last_t))
+        h_t = self.tanh(self.linear_W_h(x) + self.linear_U_h(torch.mul(r_t, hidden_last_t)))
         return torch.mul((1 - z_t), hidden_last_t) + torch.mul(z_t, h_t)
         
 
@@ -340,29 +329,24 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
         self.num_layers = num_layers
         self.dp_keep_prob = dp_keep_prob
 
-        self.sigmoid = nn.Sigmoid()
-        self.tanh = nn.Tanh()
-
         self.embedding = nn.Embedding(self.vocab_size, self.emb_size)
-        self.encoder = nn.Linear(self.emb_size, self.hidden_size)
         self.decoder = nn.Linear(self.hidden_size, self.vocab_size)
 
-        self.forward_layer = GRU_Hidden(self.hidden_size, self.hidden_size, self.batch_size)
-        self.first_forward_layer = GRU_Hidden(self.emb_size, self.hidden_size, self.batch_size)
+        k = math.sqrt(1/self.hidden_size)
+
+        self.forward_layer = GRU_Hidden(self.hidden_size, self.hidden_size, k)
+        self.first_forward_layer = GRU_Hidden(self.emb_size, self.hidden_size, k)
         self.forward_layers = clones(self.forward_layer, self.num_layers)
         self.forward_layers.insert(0, self.first_forward_layer)
 
         self.dropout = nn.Dropout(1 - self.dp_keep_prob)
 
-        self.k = math.sqrt(1/self.hidden_size)
 
         self.init_weights_uniform()
 
     def init_weights_uniform(self):
         print('init_weights_uniform GRU')
         nn.init.uniform_(self.embedding.weight, a=-0.1, b=0.1)
-        
-        nn.init.uniform_(self.encoder.weight, a=-self.k, b=self.k)
         
         nn.init.uniform_(self.decoder.weight, a=-0.1, b=0.1)
         nn.init.zeros_(self.decoder.bias)
