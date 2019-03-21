@@ -163,7 +163,7 @@ argsdict['code_file'] = sys.argv[0]
 # name for the experimental dir
 print("\n########## Setting Up Experiment ######################")
 flags = [flag.lstrip('--').replace('/', '').replace('\\', '') for flag in sys.argv[1:]]
-experiment_path = os.path.join('results/' + args.save_dir + '_'.join([argsdict['model'], argsdict['optimizer']] + flags))
+experiment_path = os.path.join('results/' + args.save_dir + '_'.join([argsdict['model'], argsdict['optimizer']]))# + flags))
 
 # Increment a counter so that previous results with the same args will not
 # be overwritten. Comment out the next four lines if you only want to keep
@@ -329,7 +329,7 @@ else:
     print("Model type not recognized.")
 
 model = model.to(device)
-print("device is = ", model)
+#print("device is = ", model)
 
 # LOSS FUNCTION
 loss_fn = nn.CrossEntropyLoss()
@@ -435,14 +435,12 @@ def run_epoch(model, data, is_train=False, lr=1.0):
                       + str(costs) + '\t' + 'speed (wps):'
                       + str(iters * model.batch_size / (time.time() - start_time)))
     loss5_1_flatten = torch.squeeze(targets.view(-1, 1))
-    plt.plot(loss5_1_flatten)
+    plt.plot(loss5_1_flatten.cpu().numpy())
     
-    i = 0
-    while os.path.exists(experiment_path + "_" + str(i)):
-        i += 1
-    experiment_path = experiment_path + "_" + str(i)
+    epoch = 0
+    plt.imsave(experiment_path + '_epoch_' + str(epoch) + '.png')
+    epoch += 1
 
-    plt.imsave(experiment_path + '_epoch_' + i + '.png')
     return np.exp(costs / iters), losses
 
 
