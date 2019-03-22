@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
 
 import numpy as np
+import torch.nn.functional as F
 import math, copy, time
+from torch.autograd import Variable
 import matplotlib.pyplot as plt
 
 
@@ -43,9 +43,6 @@ def clones(module, N):
     """
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
-def clones_param(module, N):
-      return nn.ParameterList([copy.deepcopy(module) for _ in range(N)])
-
 def create_tensor1(arg_1):
     if torch.cuda.is_available():
         return torch.zeros(arg_1).cuda()
@@ -75,27 +72,27 @@ def create_tensor4(arg_1, arg_2, arg_3, arg_4):
 
 
 class RNN_Hidden(nn.Module):
-    def __init__(self, input, output, k):
+    def __init__(self, input, output, batch_size):
         super(RNN_Hidden, self).__init__()
-        self.k = k
-        # self.output = output
-        # self.batch_size = batch_size
+
+        self.output = output
+        self.batch_size = batch_size
         self.tanh = nn.Tanh()
         
-        self.linear_W = nn.Linear(input, output, True)
         self.linear_W = nn.Linear(input, output, False)
         self.linear_W_h = nn.Linear(output, output, True)
 
         self.init_weights_uniform()
 
     def init_weights_uniform(self):
-        nn.init.uniform_(self.linear_W.weight, a=-self.k, b=self.k,)
-        nn.init.uniform_(self.linear_W.bias, a=-self.k, b=self.k,)
-        nn.init.uniform_(self.linear_W_h.weight, a=-self.k, b=self.k)
-        nn.init.uniform_(self.linear_W_h.bias, a=-self.k, b=self.k)
+        k = math.sqrt(1/self.output)
+
+        nn.init.uniform_(self.linear_W.weight, a=-k, b=k,)
+        nn.init.uniform_(self.linear_W_h.weight, a=-k, b=k)
+        nn.init.uniform_(self.linear_W_h.bias, a=-k, b=k)
 
     def forward(self, x, hidden_last_t):
-        h_t = self.tanh(self.linear_W(x) + self.linear_W_h(hidden_last_t))
+        h_t = torch.tanh(self.linear_W(x) + self.linear_W_h(hidden_last_t))
         return h_t
 
 # Problem 1
@@ -138,16 +135,33 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         self.dp_keep_prob = dp_keep_prob
 
         self.dropout = nn.Dropout(1 - self.dp_keep_prob)
-        self.embedding = nn.Embedding(self.vocab_size, self.emb_size)
+        self.tanh = nn.Tanh()
+        self.embedding = nn.Embedding(num_embeddings = self.vocab_size, embedding_dim = self.emb_size)
         self.decoder = nn.Linear(self.hidden_size, self.vocab_size)
 
-        k = math.sqrt(1/self.hidden_size)
-        self.forward_layer = RNN_Hidden(self.hidden_size, self.hidden_size, k)
-        self.first_forward_layer = RNN_Hidden(self.emb_size, self.hidden_size, k)
-
+        self.forward_layer = RNN_Hidden(self.hidden_size, self.hidden_size, self.batch_size)
+        self.first_forward_layer = RNN_Hidden(self.emb_size, self.hidden_size, self.batch_size)
         self.forward_layers = clones(self.forward_layer, self.num_layers)
         self.forward_layers.insert(0, self.first_forward_layer)
 
+        self.k = math.sqrt(1/self.hidden_size)        
+        # Initialize the embedding and output weights uniformly in the range [-0.1, 0.1]
+        self.W_emb = nn.Parameter(torch.empty(self.emb_size, self.vocab_size).uniform_(-0.1, 0.1))
+        self.W_init = nn.Parameter(torch.empty(self.hidden_size, self.emb_size).uniform_(-self.k, self.k))
+        
+        
+        # Initialize all other (i.e. recurrent and linear) weights AND biases uniformly 
+        # in the range [-k, k] where k is the square root of 1/hidden_size
+        
+
+        self.W_output = nn.Parameter(torch.empty(self.hidden_size, self.vocab_size).uniform_(-0.1, 0.1))
+        self.W_hidden_last_t = nn.Parameter(torch.empty(self.num_layers, self.hidden_size, self.hidden_size).uniform_(-self.k, self.k))
+        self.W_hidden_previous_layer = nn.Parameter(torch.empty(self.num_layers, self.hidden_size, self.hidden_size).uniform_(-self.k, self.k))
+        
+        self.bW_hidden = nn.Parameter(torch.empty(self.num_layers, self.hidden_size, self.batch_size).uniform_(-self.k, self.k))
+        
+        # and output biases to 0 (in place).
+        self.bW_output = nn.Parameter(torch.zeros(self.batch_size, self.vocab_size))
         self.init_weights()
 
     def init_weights(self):
@@ -214,7 +228,8 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
 
         input_emb = self.embedding(inputs)
 
-        for t in range(1, self.seq_len + 1): # + 1
+        for t in range(1, self.seq_len + 1):
+
             state_last_layer = self.dropout(input_emb[t - 1])
             
             # Input Layer
@@ -225,9 +240,10 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
                 state_last_layer = self.dropout(hiddens[t][layer-1].clone()) 
                 hiddens[t][layer] += self.forward_layers[layer](state_last_layer, hiddens[t-1][layer].clone())
 
-            logits[t-1] += self.decoder(self.dropout(hiddens[t][self.num_layers-1].clone()))
+            logits[t - 1] += self.decoder(self.dropout(hiddens[t][self.num_layers-1].clone()))
 
-        return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len - 1]
+        return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len]
+
 
     def generate(self, input, hidden, generated_seq_len):
         # TODO ========================
@@ -258,56 +274,50 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         return samples
 
 class GRU_Hidden(nn.Module):
-    def __init__(self, input, output, k):
+    def __init__(self, input, output, batch_size):
         super(GRU_Hidden, self).__init__()
 
         self.output = output
-        self.k = k
-        self.sigmoid_r = nn.Sigmoid()
-        self.sigmoid_z = nn.Sigmoid() # TODO: Remove
+        self.batch_size = batch_size
+        self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
         
         # r
-        # self.linear_W = nn.Linear(input, output)
         self.linear_W = nn.Linear(input, output, False)
         self.linear_U_r = nn.Linear(output, output)
 
         # z
-        # self.linear_W_z = nn.Linear(input, output)
         self.linear_W_z = nn.Linear(input, output, False)
         self.linear_U_z = nn.Linear(output, output)
 
         # h
-        # self.linear_W_h = nn.Linear(input, output)
         self.linear_W_h = nn.Linear(input, output, False)
         self.linear_U_h = nn.Linear(output, output)
 
         self.init_weights_uniform()
 
     def init_weights_uniform(self):
+        k = math.sqrt(1/self.output)
 
         # r
-        nn.init.uniform_(self.linear_W.weight, a=-self.k, b=self.k)
-        # nn.init.uniform_(self.linear_W.bias, a=-self.k, b=self.k)
-        nn.init.uniform_(self.linear_U_r.weight, a=-self.k, b=self.k)
-        nn.init.uniform_(self.linear_U_r.bias, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_W.weight, a=-k, b=k,)
+        nn.init.uniform_(self.linear_U_r.weight, a=-k, b=k)
+        nn.init.uniform_(self.linear_U_r.bias, a=-k, b=k)
 
         # z
-        nn.init.uniform_(self.linear_W_z.weight, a=-self.k, b=self.k)
-        # nn.init.uniform_(self.linear_W_z.bias, a=-self.k, b=self.k)
-        nn.init.uniform_(self.linear_U_z.weight, a=-self.k, b=self.k)
-        nn.init.uniform_(self.linear_U_z.bias, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_W_z.weight, a=-k, b=k)
+        nn.init.uniform_(self.linear_U_z.weight, a=-k, b=k)
+        nn.init.uniform_(self.linear_U_z.bias, a=-k, b=k)
 
         # h
-        nn.init.uniform_(self.linear_W_h.weight, a=-self.k, b=self.k)
-        # nn.init.uniform_(self.linear_W_h.bias, a=-self.k, b=self.k)
-        nn.init.uniform_(self.linear_U_h.weight, a=-self.k, b=self.k)
-        nn.init.uniform_(self.linear_U_h.bias, a=-self.k, b=self.k)
+        nn.init.uniform_(self.linear_W_h.weight, a=-k, b=k)
+        nn.init.uniform_(self.linear_U_h.weight, a=-k, b=k)
+        nn.init.uniform_(self.linear_U_h.bias, a=-k, b=k)
 
     def forward(self, x, hidden_last_t):
-        r_t = self.sigmoid_r(self.linear_W(x) + self.linear_U_r(hidden_last_t))
-        z_t = self.sigmoid_z(self.linear_W_z(x) + self.linear_U_z(hidden_last_t))
-        h_t = self.tanh(self.linear_W_h(x) + self.linear_U_h(torch.mul(r_t, hidden_last_t)))
+        r_t = torch.sigmoid(self.linear_W(x) + self.linear_U_r(hidden_last_t))
+        z_t = torch.sigmoid(self.linear_W_z(x) + self.linear_U_z(hidden_last_t))
+        h_t = torch.tanh(self.linear_W_h(x) + self.linear_U_h(torch.mul(r_t, hidden_last_t)))
         return torch.mul((1 - z_t), hidden_last_t) + torch.mul(z_t, h_t)
         
 
@@ -329,18 +339,21 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
         self.num_layers = num_layers
         self.dp_keep_prob = dp_keep_prob
 
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
+
         self.embedding = nn.Embedding(self.vocab_size, self.emb_size)
+        self.encoder = nn.Linear(self.emb_size, self.hidden_size)
         self.decoder = nn.Linear(self.hidden_size, self.vocab_size)
 
-        k = math.sqrt(1/self.hidden_size)
-
-        self.forward_layer = GRU_Hidden(self.hidden_size, self.hidden_size, k)
-        self.first_forward_layer = GRU_Hidden(self.emb_size, self.hidden_size, k)
+        self.forward_layer = GRU_Hidden(self.hidden_size, self.hidden_size, self.batch_size)
+        self.first_forward_layer = GRU_Hidden(self.emb_size, self.hidden_size, self.batch_size)
         self.forward_layers = clones(self.forward_layer, self.num_layers)
         self.forward_layers.insert(0, self.first_forward_layer)
 
         self.dropout = nn.Dropout(1 - self.dp_keep_prob)
 
+        self.k = math.sqrt(1/self.hidden_size)
 
         self.init_weights_uniform()
 
@@ -348,8 +361,12 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
         print('init_weights_uniform GRU')
         nn.init.uniform_(self.embedding.weight, a=-0.1, b=0.1)
         
+        nn.init.uniform_(self.encoder.weight, a=-self.k, b=self.k)
+        
         nn.init.uniform_(self.decoder.weight, a=-0.1, b=0.1)
         nn.init.zeros_(self.decoder.bias)
+
+    # TODO ========================
 
     def init_hidden(self):
         # TODO ========================
@@ -374,7 +391,7 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
             #Last layer
             logits[t - 1] += self.decoder(self.dropout(hiddens[t][self.num_layers - 1].clone()))
 
-        return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len - 1]
+        return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len]
 
     def generate(self, input, hidden, generated_seq_len):
         # TODO ========================
@@ -453,7 +470,6 @@ class MultiHeadedAttention(nn.Module):
         # This requires the number of n_heads to evenly divide n_units.
         assert n_units % n_heads == 0
         self.n_units = n_units
-        self.n_heads = n_heads
 
         # TODO: create/initialize any necessary parameters or layers
         # Initialize all weights and biases uniformly in the range [-k, k],
@@ -461,28 +477,6 @@ class MultiHeadedAttention(nn.Module):
         # Note: the only Pytorch modules you are allowed to use are nn.Linear 
         # and nn.Dropout
         # ETA: you can also use softmax
-        k = np.sqrt(1 / self.n_units)
-        self.linears = clones(nn.Linear(n_units, n_units), 4)
-        self.dropout = nn.Dropout(p=dropout)
-
-        self.WQ = clones_param(nn.Parameter(torch.empty(n_units, self.d_k).uniform_(-k, k)), n_heads)
-        self.WK = clones_param(nn.Parameter(torch.empty(n_units, self.d_k).uniform_(-k, k)), n_heads)
-        self.WV = clones_param(nn.Parameter(torch.empty(n_units, self.d_k).uniform_(-k, k)), n_heads)
-        self.Wout = nn.Parameter(torch.empty(n_units, n_units).uniform_(-k, k)) # different dimensions
-        self.bQ = nn.Parameter(torch.zeros(n_units))
-        self.bK = nn.Parameter(torch.zeros(n_units))
-        self.bV = nn.Parameter(torch.zeros(n_units))
-        self.bout = nn.Parameter(torch.zeros(n_units))
-
-    def attention(self, query, key, value, mask=None, dropout=None):
-        "Compute the scaled dot product attention"
-        scores = torch.matmul(query, key.transpose(-2, -1)) / np.sqrt(self.d_k)
-        if mask is not None:
-            scores = scores.masked_fill(mask == 0, -1e9)  # Avoid numerical instability
-        p_attn = F.softmax(scores, dim=-1)
-        if dropout is not None:
-            p_attn = dropout(p_attn)
-        return torch.matmul(p_attn, value)
 
     def forward(self, query, key, value, mask=None):
         # TODO: implement the masked multi-head attention.
@@ -492,33 +486,8 @@ class MultiHeadedAttention(nn.Module):
         # As described in the .tex, apply input masking to the softmax 
         # generating the "attention values" (i.e. A_i in the .tex)
         # Also apply dropout to the attention values.
-        if mask is not None:
-            # Same mask applied to all h heads.
-            mask = mask.unsqueeze(1)
 
-        batch_size = query.size(0)
-        seq_len = query.size(1)
-
-        # Linear transformations
-        q = torch.matmul(query, self.WQ[0])
-        k = torch.matmul(key, self.WK[0])
-        v = torch.matmul(value, self.WV[0])
-        for head in range(1, self.n_heads):
-            q = torch.cat((q, torch.matmul(query, self.WQ[head])), 1)
-            k = torch.cat((k, torch.matmul(key, self.WK[head])), 1)
-            v = torch.cat((v, torch.matmul(value, self.WV[head])), 1)
-        q = q.view(batch_size, self.n_heads, seq_len, self.d_k)
-        k = k.view(batch_size, self.n_heads, seq_len, self.d_k)
-        v = v.view(batch_size, self.n_heads, seq_len, self.d_k)
-
-        # Softmax and mask
-        x = self.attention(q, k, v, mask=mask, dropout=self.dropout)
-
-        # Concatenation
-        x = x.transpose(1, 2).contiguous().view(batch_size, -1, self.n_heads * self.d_k)
-
-        # Linear transformation for output of next encoder
-        return torch.matmul(x, self.Wout)
+        return  # size: (batch_size, seq_len, self.n_units)
 
 
 # ----------------------------------------------------------------------------------
