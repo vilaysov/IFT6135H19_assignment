@@ -164,5 +164,12 @@ model = model.to(device)
 print("device is = ", model)
 
 print("Load model parameters, best_params.pt")
-model.load_state_dict(torch.load(os.path.join(args.save_dir, 'best_params.pt')))
+
+dir = args.save_dir
+bp_path = os.path.join(dir, 'best_params.pt')
+model.load_state_dict(torch.load(bp_path))
 model.eval()
+
+sample = model.generate(input, model.init_hidden(), generated_seq_len=20)
+
+print(sample)
