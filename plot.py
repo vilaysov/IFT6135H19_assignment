@@ -77,7 +77,6 @@ plot_path = os.path.join(dir, 'learning_curves_plot.png')
 print('\nDONE\n\Load learning curves of ' + lc_path)
 
 x = np.load(lc_path)[()]
-import pdb; pdb.set_trace()
 
 plt.plot(x['train_ppls'])
 plt.plot(x['val_ppls'])
