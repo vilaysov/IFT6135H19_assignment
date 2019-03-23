@@ -1,5 +1,11 @@
-#!/bin/python
-# coding: utf-8
+#    - For Problem 5, perform all computations / plots based on saved models
+#      from Problem 4.1. NOTE this means you don't have to save the models for 
+#      your exploration, which can make things go faster. (Of course
+#      you can still save them if you like; just add the flag --save_best). 
+#    - For Problem 5.1, you can modify the loss computation in this script 
+#      (search for "LOSS COMPUTATION" to find the appropriate line. Remember to 
+#      submit your code.
+
 
 import argparse
 import time
@@ -10,32 +16,22 @@ import torch
 import torch.nn
 from torch.autograd import Variable
 import torch.nn as nn
-import numpy as numpy
+import numpy
+import matplotlib.pyplot as plt
+import math
 
-
-def repackage_hidden(h):
-    """
-    Wraps hidden states in new Tensors, to detach them from their history.
-    
-    This prevents Pytorch from trying to backpropagate into previous input 
-    sequences when we use the final hidden states from one mini-batch as the 
-    initial hidden states for the next mini-batch.
-    
-    Using the final hidden states in this way makes sense when the elements of 
-    the mini-batches are actually successive subsequences in a set of longer sequences.
-    This is the case with the way we've processed the Penn Treebank dataset.
-    """
-    if isinstance(h, Variable):
-        return h.detach()
-    else:
-        return tuple(repackage_hidden(v) for v in h)
-
+np = numpy
 
 # NOTE ==============================================
 # This is where your models are imported
 from models import RNN, GRU
 from models import make_model as TRANSFORMER
 
+##############################################################################
+#
+# ARG PARSING AND EXPERIMENT SETUP
+#
+##############################################################################
 
 parser = argparse.ArgumentParser(description='PyTorch Penn Treebank Language Modeling')
 
@@ -83,7 +79,7 @@ parser.add_argument('--evaluate', action='store_true',
                     completed ALL hyperparameter tuning on the validation set.\
                     Note we are not requiring you to do this.")
 
-# DO NOT CHANGE THIS (setting the random seed makes experiments deterministic, 
+# DO NOT CHANGE THIS (setting the random seed makes experiments deterministic,
 # which helps for reproducibility)
 parser.add_argument('--seed', type=int, default=1111,
                     help='random seed')
@@ -91,6 +87,9 @@ parser.add_argument('--seed', type=int, default=1111,
 args = parser.parse_args()
 argsdict = args.__dict__
 argsdict['code_file'] = sys.argv[0]
+
+# Set the random seed manually for reproducibility.
+torch.manual_seed(args.seed)
 
 # Use the GPU if you have one
 if torch.cuda.is_available():
@@ -101,6 +100,12 @@ else:
       of memory. \n You can try setting batch_size=1 to reduce memory usage")
     device = torch.device("cpu")
 
+
+###############################################################################
+#
+# LOADING & PROCESSING
+#
+###############################################################################
 
 # HELPER FUNCTIONS
 def _read_words(filename):
@@ -125,6 +130,7 @@ def _file_to_word_ids(filename, word_to_id):
     data = _read_words(filename)
     return [word_to_id[word] for word in data if word in word_to_id]
 
+
 # Processes the raw data from text files
 def ptb_raw_data(data_path=None, prefix="ptb"):
     train_path = os.path.join(data_path, prefix + ".train.txt")
@@ -138,6 +144,50 @@ def ptb_raw_data(data_path=None, prefix="ptb"):
     return train_data, valid_data, test_data, word_to_id, id_2_word
 
 
+# Yields minibatches of data
+def ptb_iterator(raw_data, batch_size, num_steps):
+    raw_data = np.array(raw_data, dtype=np.int32)
+
+    data_len = len(raw_data)
+    batch_len = data_len // batch_size
+    data = np.zeros([batch_size, batch_len], dtype=np.int32)
+    for i in range(batch_size):
+        data[i] = raw_data[batch_len * i:batch_len * (i + 1)]
+
+    epoch_size = (batch_len - 1) // num_steps
+
+    if epoch_size == 0:
+        raise ValueError("epoch_size == 0, decrease batch_size or num_steps")
+
+    for i in range(epoch_size):
+        x = data[:, i * num_steps:(i + 1) * num_steps]
+        y = data[:, i * num_steps + 1:(i + 1) * num_steps + 1]
+        yield (x, y)
+
+
+class Batch:
+    "Data processing for the transformer. This class adds a mask to the data."
+
+    def __init__(self, x, pad=-1):
+        self.data = x
+        self.mask = self.make_mask(self.data, pad)
+
+    @staticmethod
+    def make_mask(data, pad):
+        "Create a mask to hide future words."
+
+        def subsequent_mask(size):
+            """ helper function for creating the masks. """
+            attn_shape = (1, size, size)
+            subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
+            return torch.from_numpy(subsequent_mask) == 0
+
+        mask = (data != pad).unsqueeze(-2)
+        mask = mask & Variable(
+            subsequent_mask(data.size(-1)).type_as(mask.data))
+        return mask
+
+
 # LOAD DATA
 print('Loading data from ' + args.data)
 raw_data = ptb_raw_data(data_path=args.data)
@@ -145,10 +195,12 @@ train_data, valid_data, test_data, word_to_id, id_2_word = raw_data
 vocab_size = len(word_to_id)
 print('  vocabulary size: {}'.format(vocab_size))
 
-# NOTE ==============================================
-# This is where your model code will be called. You may modify this code
-# if required for your implementation, but it should not typically be necessary,
-# and you must let the TAs know if you do so.
+###############################################################################
+# 
+# MODEL SETUP
+#
+###############################################################################
+
 if args.model == 'RNN':
     model = RNN(emb_size=args.emb_size, hidden_size=args.hidden_size,
                 seq_len=args.seq_len, batch_size=args.batch_size,
@@ -163,9 +215,9 @@ elif args.model == 'TRANSFORMER':
     if args.debug:  # use a very small model
         model = TRANSFORMER(vocab_size=vocab_size, n_units=16, n_blocks=2)
     else:
-        # Note that we're using num_layers and hidden_size to mean slightly 
+        # Note that we're using num_layers and hidden_size to mean slightly
         # different things here than in the RNNs.
-        # Also, the Transformer also has other hyperparameters 
+        # Also, the Transformer also has other hyperparameters
         # (such as the number of attention heads) which can change it's behavior.
         model = TRANSFORMER(vocab_size=vocab_size, n_units=args.hidden_size,
                             n_blocks=args.num_layers, dropout=1. - args.dp_keep_prob)
@@ -177,20 +229,93 @@ elif args.model == 'TRANSFORMER':
 else:
     print("Model type not recognized.")
 
-model = model.to(device)
-print("device is = ", model)
-
+# Load best model
 print("Load model parameters, best_params.pt")
+model.load_state_dict(torch.load(os.path.join(args.save_dir, 'best_params.pt')))
+model = model.to(device)
 
-dir = args.save_dir
-bp_path = os.path.join(dir, 'best_params.pt')
-model.load_state_dict(torch.load(bp_path))
-model.eval()
-inputs = torch.LongTensor(20).random_(0, model.vocab_size).to(device)
-hidden = repackage_hidden(model.init_hidden())
-generated_seq_len=20
-samples = model.generate(inputs, hidden.to(device), generated_seq_len)
-sentence = ""
-for t in range(generated_seq_len):
-    sentence += id_2_word[samples[0][t].data.item()] + ' '
-print('samples 1 : ', sentence)
+# LOSS FUNCTION
+loss_fn = nn.CrossEntropyLoss()
+
+
+###############################################################################
+# 
+# DEFINE COMPUTATIONS FOR PROCESSING ONE EPOCH
+#
+###############################################################################
+
+def repackage_hidden(h):
+    """
+    Wraps hidden states in new Tensors, to detach them from their history.
+    
+    This prevents Pytorch from trying to backpropagate into previous input 
+    sequences when we use the final hidden states from one mini-batch as the 
+    initial hidden states for the next mini-batch.
+    
+    Using the final hidden states in this way makes sense when the elements of 
+    the mini-batches are actually successive subsequences in a set of longer sequences.
+    This is the case with the way we've processed the Penn Treebank dataset.
+    """
+    if isinstance(h, Variable):
+        return h.detach()
+    else:
+        return tuple(repackage_hidden(v) for v in h)
+
+
+def average_loss(model, data):
+    """
+    Compute the average loss at each time-step (i.e.Lt for each t) within validation sequences
+    """
+    model.eval()
+    costs = 0.0
+    iters = 0
+    num_batches = len(data) // (model.batch_size * model.seq_len)
+    loss5_1 = np.zeros(num_batches)
+
+    # LOOP THROUGH MINIBATCHES
+    for step, (x, y) in enumerate(ptb_iterator(data, model.batch_size, model.seq_len)):
+
+        if args.model != 'TRANSFORMER':
+            hidden = model.init_hidden()
+            hidden = hidden.to(device)
+
+        if args.model == 'TRANSFORMER':
+            batch = Batch(torch.from_numpy(x).long().to(device))
+            model.zero_grad()
+            outputs = model.forward(batch.data, batch.mask).transpose(1, 0)
+        else:
+            inputs = torch.from_numpy(x.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
+            model.zero_grad()
+            hidden = repackage_hidden(hidden)
+            outputs, hidden = model(inputs, hidden)
+
+        targets = torch.from_numpy(y.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
+        tt = torch.squeeze(targets.view(-1, model.batch_size * model.seq_len))
+
+        # LOSS COMPUTATION
+        loss = np.zeros(model.seq_len)
+        for t in range(model.seq_len):
+            loss[t] = loss_fn(outputs[t], targets[t])
+
+        loss5_1[step] = np.mean(loss)
+
+    loss5_1 = loss5_1 / num_batches
+    print('Size of loss5_1', np.shape(loss5_1))
+    print(loss5_1)
+    plt.imsave(args.model + '_question5_1' + '.png', loss5_1)
+
+    return np.exp(costs / iters), losses
+
+
+###############################################################################
+#
+# RUN MAIN LOOP (TRAIN AND VAL)
+#
+###############################################################################
+
+print("\n########## Running Main Loop ##########################")
+val_ppls = []
+val_losses = []
+
+# RUN MODEL ON VALIDATION DATA
+val_ppl, val_loss = average_loss(model, valid_data)

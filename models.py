@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
+from torch.distributions.categorical import Categorical
 
 
 # NOTE ==============================================
@@ -92,6 +93,7 @@ class RNN_Hidden(nn.Module):
         nn.init.uniform_(self.linear_W_h.bias, a=-k, b=k)
 
     def forward(self, x, hidden_last_t):
+        # import pdb; pdb.set_trace()
         h_t = torch.tanh(self.linear_W(x) + self.linear_W_h(hidden_last_t))
         return h_t
 
@@ -272,30 +274,21 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
                         shape: (generated_seq_len, batch_size)
         """
         print('GENERATE RNN')
-        logits = create_tensor3(self.batch_size, self.vocab_size)
-        hiddens = create_tensor4(self.num_layers, self.batch_size, self.hidden_size)
-        input_emb = create_tensor3(self.batch_size, self.emb_size)
-        hiddens[0] += hidden
+        self.seq_len = 1
+        samples = input.view(1, -1) 
+        for i in range(generated_seq_len):
+            logits, hidden = self.forward(input, hidden)
 
-        import pdb; pdb.set_trace()
-        input_emb = self.embedding(input)
+            soft = F.softmax(logits)
 
+            dist = Categorical(probs=soft).sample() 
+            dist = dist.view(1, -1)
 
-        state_last_layer = self.dropout(input_emb)
-        
-        # Input Layer
-        hiddens[0] += self.forward_layers[0](state_last_layer, hiddens[0].clone())
-        import pdb; pdb.set_trace()
+            # Append output to samples
+            samples = torch.cat((samples, dist), dim=0)
 
-        # Hidden Layers 
-        for layer in range(1, self.num_layers):
-            state_last_layer = self.dropout(hiddens[layer-1].clone()) 
-            hiddens[layer] += self.forward_layers[layer](state_last_layer, hiddens[layer].clone())
-        
-        import pdb; pdb.set_trace()
-
-        logits += self.decoder(self.dropout(hiddens[self.num_layers-1].clone()))
-
+            # Make input to next time step
+            input = dist 
         return samples
 
 class GRU_Hidden(nn.Module):
@@ -420,24 +413,21 @@ class GRU(nn.Module):  # Implement a stacked GRU RNN
 
     def generate(self, input, hidden, generated_seq_len):
         print('GENERATE GRU')
-        logits = create_tensor3(self.seq_len, self.batch_size, self.vocab_size)
-        hiddens = create_tensor4(self.seq_len + 1, self.num_layers, self.batch_size, self.hidden_size)
-        hiddens[0] += hidden
-        import pdb; pdb.set_trace()
-        x_embs = self.embedding(input)
-        for t in range(1, self.seq_len + 1):
-            #Input layer
-            hiddens[t][0] += self.forward_layers[0](self.dropout(x_embs[t - 1]), hiddens[t - 1][0].clone())
+        self.seq_len = 1
+        samples = input.view(1, -1) 
+        for i in range(generated_seq_len):
+            logits, hidden = self.forward(input, hidden)
 
-            # hidden layers
-            for layer in range(1, self.num_layers):
-                x_dropout = self.dropout(hiddens[t][layer - 1].clone())
-                hiddens[t][layer] += self.forward_layers[layer](x_dropout, hiddens[t - 1][layer].clone())
+            soft = F.softmax(logits)
 
-            #Last layer
-            logits[t - 1] += self.decoder(self.dropout(hiddens[t][self.num_layers - 1].clone()))
+            dist = Categorical(probs=soft).sample() 
+            dist = dist.view(1, -1)
 
-        # return logits.view(self.seq_len, self.batch_size, self.vocab_size), hiddens[self.seq_len]
+            # Append output to samples
+            samples = torch.cat((samples, dist), dim=0)
+
+            # Make input to next time step
+            input = dist 
         return samples
 
 
