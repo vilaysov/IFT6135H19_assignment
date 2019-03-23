@@ -187,11 +187,10 @@ bp_path = os.path.join(dir, 'best_params.pt')
 model.load_state_dict(torch.load(bp_path))
 model.eval()
 inputs = torch.LongTensor(20).random_(0, model.vocab_size).to(device)
-print('inputs', inputs[:10])
 hidden = repackage_hidden(model.init_hidden())
-samples = model.generate(inputs, hidden.to(device), generated_seq_len=20)
-
-print('samples', samples[:10])
-
-# for word in samples:
-    # print()
+generated_seq_len=20
+samples = model.generate(inputs, hidden.to(device), generated_seq_len)
+sentence = ""
+for t in range(generated_seq_len):
+    sentence += id_2_word[samples[0][t].data.item()] + ' '
+print('samples', sentence)

@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import math, copy, time
 from torch.autograd import Variable
 import matplotlib.pyplot as plt
+from torch.distributions.categorical import Categorical
 
 
 # NOTE ==============================================
@@ -274,16 +275,25 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
         """
         print('GENERATE RNN')
         self.seq_len = 1
-        samples = torch.zeros([generated_seq_len, self.batch_size], device=input.device)
+        # samples = torch.zeros([generated_seq_len, self.batch_size], device=input.device)
+        samples = input.view(1, -1) 
         for i in range(generated_seq_len):
             logits, hidden = self.forward(input, hidden)
             soft = F.softmax(logits)
             # dist = torch.distributions.Categorical(logits)
             # input = torch.argmax(F.softmax(logits))
-            import pdb; pdb.set_trace()
-            x=torch.multinomial(soft,self.batch_size).squeeze()
-            samples[i] = x
-            print(x)
+            # import pdb; pdb.set_trace()
+            # x=torch.multinomial(soft,self.batch_size).squeeze()
+            # samples[i] = x
+
+            dist = Categorical(probs=soft).sample()   # (batch_size)
+            dist = dist.view(1, -1)               # (1, batch_size)
+
+            # Append output to samples
+            samples = torch.cat((samples, dist), dim=0)
+
+            # Make input to next time step
+            input = dist   # (1, batch_size, emb_size)
         return samples
 
 class GRU_Hidden(nn.Module):
