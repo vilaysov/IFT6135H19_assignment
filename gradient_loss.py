@@ -88,6 +88,7 @@ import torch.nn
 from torch.autograd import Variable
 import torch.nn as nn
 import numpy
+import pdb
 
 np = numpy
 
@@ -305,17 +306,7 @@ elif args.model == 'GRU':
                 seq_len=args.seq_len, batch_size=args.batch_size,
                 vocab_size=vocab_size, num_layers=args.num_layers,
                 dp_keep_prob=args.dp_keep_prob)
-elif args.model == 'TRANSFORMER':
-    if args.debug:  # use a very small model
-        model = TRANSFORMER(vocab_size=vocab_size, n_units=16, n_blocks=2)
-    else:
-        # Note that we're using num_layers and hidden_size to mean slightly 
-        # different things here than in the RNNs.
-        # Also, the Transformer also has other hyperparameters 
-        # (such as the number of attention heads) which can change it's behavior.
-        model = TRANSFORMER(vocab_size=vocab_size, n_units=args.hidden_size,
-                            n_blocks=args.num_layers, dropout=1. - args.dp_keep_prob)
-        # these 3 attributes don't affect the Transformer's computations;
+
     # they are only used in run_epoch
     model.batch_size = args.batch_size
     model.seq_len = args.seq_len
@@ -325,6 +316,13 @@ else:
 
 model = model.to(device)
 print("device is = ", model)
+
+print("Load model parameters, best_params.pt")
+
+dir = 'RNN_4-1'
+bp_path = os.path.join(dir, 'best_params.pt')
+model.load_state_dict(torch.load(bp_path))
+model.train()
 
 # LOSS FUNCTION
 loss_fn = nn.CrossEntropyLoss()
@@ -361,7 +359,7 @@ def repackage_hidden(h):
         return tuple(repackage_hidden(v) for v in h)
 
 
-def run_epoch(model, data, is_train=False, lr=1.0):
+def run_epoch(epoch, model, data, is_train=False, lr=1.0):
     """
     One epoch of training/validation (depending on flag is_train).
     """
@@ -380,16 +378,11 @@ def run_epoch(model, data, is_train=False, lr=1.0):
 
     # LOOP THROUGH MINIBATCHES
     for step, (x, y) in enumerate(ptb_iterator(data, model.batch_size, model.seq_len)):
-        if args.model == 'TRANSFORMER':
-            batch = Batch(torch.from_numpy(x).long().to(device))
-            model.zero_grad()
-            outputs = model.forward(batch.data, batch.mask).transpose(1, 0)
-            # print ("outputs.shape", outputs.shape)
-        else:
-            inputs = torch.from_numpy(x.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
-            model.zero_grad()
-            hidden = repackage_hidden(hidden)
-            outputs, hidden = model(inputs, hidden)
+
+        inputs = torch.from_numpy(x.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
+        model.zero_grad()
+        hidden = repackage_hidden(hidden)
+        outputs, hidden = model(inputs, hidden)
 
         targets = torch.from_numpy(y.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
         tt = torch.squeeze(targets.view(-1, model.batch_size * model.seq_len))
@@ -399,6 +392,29 @@ def run_epoch(model, data, is_train=False, lr=1.0):
         # and all time-steps of the sequences.
         # For problem 5.3, you will (instead) need to compute the average loss 
         # at each time-step separately.
+
+        if epoch == 0 and step == 2:
+            print("**In average gradient**")
+            target_last = targets[-1]
+            output_last = outputs[-1]
+
+            hidden.requires_grad_()
+            loss_last = loss_fn(output_last, target_last)
+            # loss_last.backward(retain_graph=True)
+            pdb.set_trace()
+            torch.autograd.grad(loss_last, hidden, retain_graph=True)
+            # pdb.set_trace()
+            
+            inputs = torch.from_numpy(x.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
+            model.zero_grad()
+            hidden = repackage_hidden(hidden)
+            outputs, hidden = model(inputs, hidden)
+
+            targets = torch.from_numpy(y.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
+            tt = torch.squeeze(targets.view(-1, model.batch_size * model.seq_len))
+            
+
+
         loss = loss_fn(outputs.contiguous().view(-1, model.vocab_size), tt)
         costs += loss.data.item() * model.seq_len
         losses.append(costs)
@@ -420,6 +436,7 @@ def run_epoch(model, data, is_train=False, lr=1.0):
                       + str(costs) + '\t' + 'speed (wps):'
                       + str(iters * model.batch_size / (time.time() - start_time)))
     return np.exp(costs / iters), losses
+
 
 
 ###############################################################################
@@ -451,10 +468,11 @@ for epoch in range(num_epochs):
         lr = lr * lr_decay  # decay lr if it is time
 
     # RUN MODEL ON TRAINING DATA
-    train_ppl, train_loss = run_epoch(model, train_data, True, lr)
+    # pdb.set_trace()
+    train_ppl, train_loss = run_epoch(epoch, model, train_data, True, lr)
 
     # RUN MODEL ON VALIDATION DATA
-    val_ppl, val_loss = run_epoch(model, valid_data)
+    val_ppl, val_loss = run_epoch(epoch, model, valid_data)
 
     # SAVE MODEL IF IT'S THE BEST SO FAR
     if val_ppl < best_val_so_far:
