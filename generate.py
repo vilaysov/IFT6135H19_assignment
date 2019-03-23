@@ -193,4 +193,4 @@ samples = model.generate(inputs, hidden.to(device), generated_seq_len)
 sentence = ""
 for t in range(generated_seq_len):
     sentence += id_2_word[samples[0][t].data.item()] + ' '
-print('samples', sentence)
+print('samples 1 : ', sentence)
