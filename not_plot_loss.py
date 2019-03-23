@@ -1,10 +1,81 @@
-#    - For Problem 5, perform all computations / plots based on saved models
+#!/bin/python
+# coding: utf-8
+
+# Code outline/scaffold for 
+# ASSIGNMENT 2: RNNs, Attention, and Optimization
+# By Tegan Maharaj, David Krueger, and Chin-Wei Huang
+# IFT6135 at University of Montreal
+# Winter 2019
+#
+# based on code from:
+#    https://github.com/deeplearningathome/pytorch-language-model/blob/master/reader.py
+#    https://github.com/ceshine/examples/blob/master/word_language_model/main.py
+#    https://github.com/teganmaharaj/zoneout/blob/master/zoneout_word_ptb.py
+#    https://github.com/harvardnlp/annotated-transformer
+
+# GENERAL INSTRUCTIONS: 
+#    - ! IMPORTANT! 
+#      Unless we're otherwise notified we will run exactly this code, importing 
+#      your models from models.py to test them. If you find it necessary to 
+#      modify or replace this script (e.g. if you are using TensorFlow), you 
+#      must justify this decision in your report, and contact the TAs as soon as 
+#      possible to let them know. You are free to modify/add to this script for 
+#      your own purposes (e.g. monitoring, plotting, further hyperparameter 
+#      tuning than what is required), but remember that unless we're otherwise 
+#      notified we will run this code as it is given to you, NOT with your 
+#      modifications.
+#    - We encourage you to read and understand this code; there are some notes 
+#      and comments to help you.
+#    - Typically, all of your code to submit should be written in models.py; 
+#      see further instructions at the top of that file / in TODOs.
+#          - RNN recurrent unit 
+#          - GRU recurrent unit
+#          - Multi-head attention for the Transformer
+#    - Other than this file and models.py, you will probably also write two 
+#      scripts. Include these and any other code you write in your git repo for 
+#      submission:
+#          - Plotting (learning curves, loss w.r.t. time, gradients w.r.t. hiddens)
+#          - Loading and running a saved model (computing gradients w.r.t. hiddens, 
+#            and for sampling from the model)
+
+# PROBLEM-SPECIFIC INSTRUCTIONS:   
+#    - For Problems 1-3, paste the code for the RNN, GRU, and Multi-Head attention 
+#      respectively in your report, in a monospace font.
+#    - For Problem 4.1 (model comparison), the hyperparameter settings you should run are as follows:
+#          --model=RNN --optimizer=ADAM --initial_lr=0.0001 --batch_size=20 --seq_len=35 --hidden_size=1500 --num_layers=2 --dp_keep_prob=0.35 --save_best
+#          --model=GRU --optimizer=SGD_LR_SCHEDULE --initial_lr=10 --batch_size=20 --seq_len=35 --hidden_size=1500 --num_layers=2 --dp_keep_prob=0.35 --save_best
+#          --model=TRANSFORMER --optimizer=SGD_LR_SCHEDULE --initial_lr=20 --batch_size=128 --seq_len=35 --hidden_size=512 --num_layers=6 --dp_keep_prob=0.9 --save_best
+#    - In those experiments, you should expect to see approximately the following
+#      perplexities:
+#                  RNN: train:  120  val: 157
+#                  GRU: train:   65  val: 104
+#          TRANSFORMER:  train:  67  val: 146
+#    - For Problem 4.2 (exploration of optimizers), you will make use of the 
+#      experiments from 4.1, and should additionally run the following experiments:
+#          --model=RNN --optimizer=SGD --initial_lr=0.0001 --batch_size=20 --seq_len=35 --hidden_size=1500 --num_layers=2 --dp_keep_prob=0.35 
+#          --model=GRU --optimizer=SGD --initial_lr=10 --batch_size=20 --seq_len=35 --hidden_size=1500 --num_layers=2 --dp_keep_prob=0.35
+#          --model=TRANSFORMER --optimizer=SGD --initial_lr=20 --batch_size=128 --seq_len=35 --hidden_size=512 --num_layers=6 --dp_keep_prob=.9
+#          --model=RNN --optimizer=SGD_LR_SCHEDULE --initial_lr=1 --batch_size=20 --seq_len=35 --hidden_size=512 --num_layers=2 --dp_keep_prob=0.35
+#          --model=GRU --optimizer=ADAM --initial_lr=0.0001 --batch_size=20 --seq_len=35 --hidden_size=1500 --num_layers=2 --dp_keep_prob=0.35
+#          --model=TRANSFORMER --optimizer=ADAM --initial_lr=0.001 --batch_size=128 --seq_len=35 --hidden_size=512 --num_layers=2 --dp_keep_prob=.9
+#    - For Problem 4.3 (exloration of hyperparameters), do your best to get 
+#      better validation perplexities than the settings given for 4.1. You may 
+#      try any combination of the hyperparameters included as arguments in this 
+#      script's ArgumentParser, but do not implement any additional 
+#      regularizers/features. You may (and will probably want to) run a lot of 
+#      different things for just 1-5 epochs when you are trying things out, but 
+#      you must report at least 3 experiments on each architecture that have run
+#      for at least 40 epochs.
+#    - For Problem 5, perform all computations / plots based on saved models 
 #      from Problem 4.1. NOTE this means you don't have to save the models for 
 #      your exploration, which can make things go faster. (Of course
 #      you can still save them if you like; just add the flag --save_best). 
 #    - For Problem 5.1, you can modify the loss computation in this script 
 #      (search for "LOSS COMPUTATION" to find the appropriate line. Remember to 
 #      submit your code.
+#    - For Problem 5.3, you must implement the generate method of the RNN and 
+#      GRU.  Implementing this method is not considered part of problems 1/2 
+#      respectively, and will be graded as part of Problem 5.3
 
 
 import argparse
@@ -79,7 +150,7 @@ parser.add_argument('--evaluate', action='store_true',
                     completed ALL hyperparameter tuning on the validation set.\
                     Note we are not requiring you to do this.")
 
-# DO NOT CHANGE THIS (setting the random seed makes experiments deterministic,
+# DO NOT CHANGE THIS (setting the random seed makes experiments deterministic, 
 # which helps for reproducibility)
 parser.add_argument('--seed', type=int, default=1111,
                     help='random seed')
@@ -87,6 +158,28 @@ parser.add_argument('--seed', type=int, default=1111,
 args = parser.parse_args()
 argsdict = args.__dict__
 argsdict['code_file'] = sys.argv[0]
+
+# Use the model, optimizer, and the flags passed to the script to make the 
+# name for the experimental dir
+print("\n########## Setting Up Experiment ######################")
+flags = [flag.lstrip('--').replace('/', '').replace('\\', '') for flag in sys.argv[1:]]
+experiment_path = os.path.join('results/' + args.save_dir + '_'.join([argsdict['model'], argsdict['optimizer']]))# + flags))
+
+# Increment a counter so that previous results with the same args will not
+# be overwritten. Comment out the next four lines if you only want to keep
+# the most recent results.
+i = 0
+while os.path.exists(experiment_path + "_" + str(i)):
+    i += 1
+experiment_path = experiment_path + "_" + str(i)
+
+# Creates an experimental directory and dumps all the args to a text file
+os.mkdir(experiment_path)
+print ("\nPutting log in %s" % experiment_path)
+argsdict['save_dir'] = experiment_path
+with open(os.path.join(experiment_path, 'exp_config.txt'), 'w') as f:
+    for key in sorted(argsdict):
+        f.write(key + '    ' + str(argsdict[key]) + '\n')
 
 # Set the random seed manually for reproducibility.
 torch.manual_seed(args.seed)
@@ -100,10 +193,12 @@ else:
       of memory. \n You can try setting batch_size=1 to reduce memory usage")
     device = torch.device("cpu")
 
-
 ###############################################################################
 #
+# 
 # LOADING & PROCESSING
+
+
 #
 ###############################################################################
 
@@ -201,6 +296,10 @@ print('  vocabulary size: {}'.format(vocab_size))
 #
 ###############################################################################
 
+# NOTE ==============================================
+# This is where your model code will be called. You may modify this code
+# if required for your implementation, but it should not typically be necessary,
+# and you must let the TAs know if you do so.
 if args.model == 'RNN':
     model = RNN(emb_size=args.emb_size, hidden_size=args.hidden_size,
                 seq_len=args.seq_len, batch_size=args.batch_size,
@@ -215,9 +314,9 @@ elif args.model == 'TRANSFORMER':
     if args.debug:  # use a very small model
         model = TRANSFORMER(vocab_size=vocab_size, n_units=16, n_blocks=2)
     else:
-        # Note that we're using num_layers and hidden_size to mean slightly
+        # Note that we're using num_layers and hidden_size to mean slightly 
         # different things here than in the RNNs.
-        # Also, the Transformer also has other hyperparameters
+        # Also, the Transformer also has other hyperparameters 
         # (such as the number of attention heads) which can change it's behavior.
         model = TRANSFORMER(vocab_size=vocab_size, n_units=args.hidden_size,
                             n_blocks=args.num_layers, dropout=1. - args.dp_keep_prob)
@@ -229,13 +328,18 @@ elif args.model == 'TRANSFORMER':
 else:
     print("Model type not recognized.")
 
-# Load best model
-print("Load model parameters, best_params.pt")
-model.load_state_dict(torch.load(os.path.join(args.save_dir, 'best_params.pt')))
 model = model.to(device)
+#print("device is = ", model)
 
 # LOSS FUNCTION
 loss_fn = nn.CrossEntropyLoss()
+if args.optimizer == 'ADAM':
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.initial_lr)
+
+# LEARNING RATE SCHEDULE    
+lr = args.initial_lr
+lr_decay_base = 1 / 1.15
+m_flat_lr = 14.0  # we will not touch lr for the first m_flat_lr epochs
 
 
 ###############################################################################
@@ -262,60 +366,6 @@ def repackage_hidden(h):
         return tuple(repackage_hidden(v) for v in h)
 
 
-def average_loss(model, data):
-    """
-    Compute the average loss at each time-step (i.e.Lt for each t) within validation sequences
-    """
-    model.eval()
-    costs = 0.0
-    iters = 0
-    num_batches = len(data) // (model.batch_size * model.seq_len)
-    loss5_1 = np.zeros(num_batches)
-
-    # LOOP THROUGH MINIBATCHES
-    for step, (x, y) in enumerate(ptb_iterator(data, model.batch_size, model.seq_len)):
-
-        if args.model != 'TRANSFORMER':
-            hidden = model.init_hidden()
-            hidden = hidden.to(device)
-
-        if args.model == 'TRANSFORMER':
-            batch = Batch(torch.from_numpy(x).long().to(device))
-            model.zero_grad()
-            outputs = model.forward(batch.data, batch.mask).transpose(1, 0)
-        else:
-            inputs = torch.from_numpy(x.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
-            model.zero_grad()
-            hidden = repackage_hidden(hidden)
-            outputs, hidden = model(inputs, hidden)
-
-        targets = torch.from_numpy(y.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
-        tt = torch.squeeze(targets.view(-1, model.batch_size * model.seq_len))
-
-        # LOSS COMPUTATION
-        loss = np.zeros(model.seq_len)
-        for t in range(model.seq_len):
-            loss[t] = loss_fn(outputs[t], targets[t])
-
-        loss5_1[step] = np.mean(loss)
-
-    loss5_1 = loss5_1 / num_batches
-    print('Size of loss5_1', np.shape(loss5_1))
-    # print(loss5_1)
-    import pdb; pdb.set_trace()
-    plt.imsave(args.model + '_question5_1' + '.png', loss5_1)
-
-    return np.exp(costs / iters), losses
-
-def plot_training_history(loss_hist, plot_path):
-      # Loss Curves
-    plt.figure(figsize=[8,6])
-    plt.plot(loss_hist,'b',linewidth=2.0)
-    plt.xlabel('Time-step (t) ',fontsize=16)
-    plt.ylabel('Loss',fontsize=16)
-    plt.title('Loss Curves of a Batch',fontsize=20, fontweight='bold')
-    plt.savefig(plot_path)
-
 def run_epoch(model, data, is_train=False, lr=1.0):
     """
     One epoch of training/validation (depending on flag is_train).
@@ -335,7 +385,6 @@ def run_epoch(model, data, is_train=False, lr=1.0):
 
     # LOOP THROUGH MINIBATCHES
     for step, (x, y) in enumerate(ptb_iterator(data, model.batch_size, model.seq_len)):
-        
         if args.model == 'TRANSFORMER':
             batch = Batch(torch.from_numpy(x).long().to(device))
             model.zero_grad()
@@ -344,8 +393,8 @@ def run_epoch(model, data, is_train=False, lr=1.0):
         else:
             inputs = torch.from_numpy(x.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
             model.zero_grad()
-            hidden = repackage_hidden(model.init_hidden())
-            outputs, hidden = model(inputs, hidden.to(device))
+            hidden = repackage_hidden(hidden)
+            outputs, hidden = model(inputs, hidden)
 
         targets = torch.from_numpy(y.astype(np.int64)).transpose(0, 1).contiguous().to(device)  # .cuda()
         tt = torch.squeeze(targets.view(-1, model.batch_size * model.seq_len))
@@ -355,33 +404,45 @@ def run_epoch(model, data, is_train=False, lr=1.0):
         # and all time-steps of the sequences.
         # For problem 5.3, you will (instead) need to compute the average loss 
         # at each time-step separately.
-        loss = list([])
-        for t in range(1, model.seq_len+1):
-            loss_tensor = loss_fn(outputs.contiguous().view(-1, model.vocab_size)[:t*35], tt[:t*35])
-            loss.append(loss_tensor.data.item())
-        # costs += loss.data.item() * model.seq_len
-        # print(step)
+        
+        # loss5_1 = loss_fn(outputs.contiguous(), tt)
         # import pdb; pdb.set_trace()
-        losses.append(loss)
+        epoch_size = len(data)//(model.batch_size * model.seq_len)
+        loss5_1 = torch.zeros(epoch_size, model.seq_len, 1).to(device)
+
+        for t in range(model.seq_len):
+            loss5_1[step][t] = loss_fn(outputs[t], targets[0])
+
+
+        loss = loss_fn(outputs.contiguous().view(-1, model.vocab_size), tt)
+        costs += loss.data.item() * model.seq_len
+        losses.append(costs)
         iters += model.seq_len
-        # TODO: Removed if train:
-
+        if args.debug:
+            print(step, loss)
+        if is_train:  # Only update parameters if training 
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+            if args.optimizer == 'ADAM':
+                optimizer.step()
+            else:
+                for p in model.parameters():
+                    if p.grad is not None:
+                        p.data.add_(-lr, p.grad.data)
+            if step % 100 == 0:
+                print('step: ' + str(step) + '\t'
+                      + "loss (sum over all examples' seen this epoch):"
+                      + str(costs) + '\t' + 'speed (wps):'
+                      + str(iters * model.batch_size / (time.time() - start_time)))
+    loss5_1_flatten = torch.squeeze(targets.view(-1, 1))
+    plt.plot(loss5_1_flatten.cpu().numpy())
     
-    # import pdb; pdb.set_trace()
-    avg_losses = np.array([])
-    for i in range(model.seq_len):
-        sum = 0
-        for l in losses:
-            sum += l[i]
-        avg_losses = np.append(avg_losses, sum/len(losses))
-    dir = args.save_dir
-    # lc_path = os.path.join(dir, 'batch_losses.npy')
-    plot_path = os.path.join(dir, 'avg_losses.png')
-    print('\nDONE\n\Save Avg Losses plot of ' + dir)
+    epoch = 0
+    plt.imsave(experiment_path + '_epoch_' + str(epoch) + '.png')
+    epoch += 1
 
-    # import pdb; pdb.set_trace()
+    return np.exp(costs / iters), losses
 
-    plot_training_history(avg_losses, plot_path)
 
 ###############################################################################
 #
@@ -390,10 +451,71 @@ def run_epoch(model, data, is_train=False, lr=1.0):
 ###############################################################################
 
 print("\n########## Running Main Loop ##########################")
+train_ppls = []
+train_losses = []
 val_ppls = []
 val_losses = []
+best_val_so_far = np.inf
+times = []
 
-# RUN MODEL ON VALIDATION DATA
-# val_ppl, val_loss = average_loss(model, valid_data)
-run_epoch(model, valid_data)
+# In debug mode, only run one epoch
+if args.debug:
+    num_epochs = 1
+else:
+    num_epochs = args.num_epochs
 
+# MAIN LOOP
+for epoch in range(num_epochs):
+    t0 = time.time()
+    print('\nEPOCH ' + str(epoch) + ' ------------------')
+    if args.optimizer == 'SGD_LR_SCHEDULE':
+        lr_decay = lr_decay_base ** max(epoch - m_flat_lr, 0)
+        lr = lr * lr_decay  # decay lr if it is time
+
+    # RUN MODEL ON TRAINING DATA
+    train_ppl, train_loss = run_epoch(model, train_data, True, lr)
+
+    # RUN MODEL ON VALIDATION DATA
+    val_ppl, val_loss = run_epoch(model, valid_data)
+
+    # SAVE MODEL IF IT'S THE BEST SO FAR
+    if val_ppl < best_val_so_far:
+        best_val_so_far = val_ppl
+        if args.save_best:
+            print("Saving model parameters to best_params.pt")
+            torch.save(model.state_dict(), os.path.join(args.save_dir, 'best_params.pt'))
+        # NOTE ==============================================
+        # You will need to load these parameters into the same model
+        # for a couple Problems: so that you can compute the gradient 
+        # of the loss w.r.t. hidden state as required in Problem 5.2
+        # and to sample from the the model as required in Problem 5.3
+        # We are not asking you to run on the test data, but if you 
+        # want to look at test performance you would load the saved
+        # model and run on the test data with batch_size=1
+
+    # LOC RESULTS
+    train_ppls.append(train_ppl)
+    val_ppls.append(val_ppl)
+    train_losses.extend(train_loss)
+    val_losses.extend(val_loss)
+    times.append(time.time() - t0)
+    log_str = 'epoch: ' + str(epoch) + '\t' \
+              + 'train ppl: ' + str(train_ppl) + '\t' \
+              + 'val ppl: ' + str(val_ppl) + '\t' \
+              + 'best val: ' + str(best_val_so_far) + '\t' \
+              + 'time (s) spent in epoch: ' + str(times[-1])
+    print(log_str)
+    with open(os.path.join(args.save_dir, 'log.txt'), 'a') as f_:
+        f_.write(log_str + '\n')
+
+# SAVE LEARNING CURVES
+lc_path = os.path.join(args.save_dir, 'learning_curves.npy')
+print('\nDONE\n\nSaving learning curves to ' + lc_path)
+np.save(lc_path, {'train_ppls': train_ppls,
+                  'val_ppls': val_ppls,
+                  'train_losses': train_losses,
+                  'val_losses': val_losses})
+# NOTE ==============================================
+# To load these, run 
+# >>> x = np.load(lc_path)[()]
+# You will need these values for plotting learning curves (Problem 4)

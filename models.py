@@ -272,29 +272,30 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
                         shape: (generated_seq_len, batch_size)
         """
         print('GENERATE RNN')
-        logits = create_tensor3(self.batch_size, self.vocab_size)
-        hiddens = create_tensor4(self.num_layers, self.batch_size, self.hidden_size)
-        input_emb = create_tensor3(self.batch_size, self.emb_size)
-        hiddens[0] += hidden
+        words = self.embedding(input)
+        samples = []
+        for t in range(generated_seq_len):
+            # state_last_layer = word.cuda()
+            state_last_layer = self.dropout(words)
+            
+            # Input Layer
+            hidden[0] = self.forward_layers[0](state_last_layer, hidden[0])
 
-        import pdb; pdb.set_trace()
-        input_emb = self.embedding(input)
+            # Hidden Layers 
+            for layer in range(1, self.num_layers):
+                state_last_layer = self.dropout(hidden[layer-1].clone()) 
+                hidden[layer] += self.forward_layers[layer](state_last_layer, hidden[layer].clone())
+            
 
-
-        state_last_layer = self.dropout(input_emb)
-        
-        # Input Layer
-        hiddens[0] += self.forward_layers[0](state_last_layer, hiddens[0].clone())
-        import pdb; pdb.set_trace()
-
-        # Hidden Layers 
-        for layer in range(1, self.num_layers):
-            state_last_layer = self.dropout(hiddens[layer-1].clone()) 
-            hiddens[layer] += self.forward_layers[layer](state_last_layer, hiddens[layer].clone())
-        
-        import pdb; pdb.set_trace()
-
-        logits += self.decoder(self.dropout(hiddens[self.num_layers-1].clone()))
+            logits = self.decoder(self.dropout(hidden[self.num_layers-1].clone()))
+            # import pdb; pdb.set_trace()
+            
+            distribution = F.softmax(logits)
+            words = []
+            for d in distribution:
+                words.append(torch.argmax(distribution))
+            samples.append(words)
+            words = torch.cat(words)
 
         return samples
 

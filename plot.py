@@ -7,11 +7,20 @@ import torch
 import torch.nn
 from torch.autograd import Variable
 import torch.nn as nn
-import numpy
+import numpy as np
 import matplotlib.pyplot as plt
 
-np = numpy
 
+def plot_training_history(train_loss_hist, valid_loss_hist, plot_path):
+      # Loss Curves
+    plt.figure(figsize=[8,6])
+    plt.plot(train_loss_hist,'r',linewidth=2.0)
+    plt.plot(valid_loss_hist,'b',linewidth=2.0)
+    plt.legend(['Training loss', 'Validation Loss'],fontsize=18)
+    plt.xlabel('Time-step (t) ',fontsize=16)
+    plt.ylabel('Loss',fontsize=16)
+    plt.title('Loss Curves',fontsize=20, fontweight='bold')
+    plt.savefig(plot_path)
 
 ## READ_ME: s_exec python plot.py --save_dir=RNN_4-1
 
@@ -78,7 +87,5 @@ print('\nDONE\n\Load learning curves of ' + lc_path)
 
 x = np.load(lc_path)[()]
 
-plt.plot(x['train_ppls'])
-plt.plot(x['val_ppls'])
 epoch = 0
-plt.savefig(plot_path)
+plot_training_history(x['train_ppls'], x['val_ppls'], plot_path)

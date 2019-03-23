@@ -10,9 +10,26 @@ import torch
 import torch.nn
 from torch.autograd import Variable
 import torch.nn as nn
-import numpy
+import numpy as numpy
 
-np = numpy
+
+def repackage_hidden(h):
+    """
+    Wraps hidden states in new Tensors, to detach them from their history.
+    
+    This prevents Pytorch from trying to backpropagate into previous input 
+    sequences when we use the final hidden states from one mini-batch as the 
+    initial hidden states for the next mini-batch.
+    
+    Using the final hidden states in this way makes sense when the elements of 
+    the mini-batches are actually successive subsequences in a set of longer sequences.
+    This is the case with the way we've processed the Penn Treebank dataset.
+    """
+    if isinstance(h, Variable):
+        return h.detach()
+    else:
+        return tuple(repackage_hidden(v) for v in h)
+
 
 # NOTE ==============================================
 # This is where your models are imported
@@ -169,7 +186,7 @@ dir = args.save_dir
 bp_path = os.path.join(dir, 'best_params.pt')
 model.load_state_dict(torch.load(bp_path))
 model.eval()
-
-sample = model.generate(input, model.init_hidden(), generated_seq_len=20)
-
-print(sample)
+inputs = torch.LongTensor(20).random_(0, model.vocab_size).to(device)
+hidden = repackage_hidden(model.init_hidden())
+samples = model.generate(inputs, hidden.to(device), generated_seq_len=20)
+print(samples)
