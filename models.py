@@ -92,6 +92,7 @@ class RNN_Hidden(nn.Module):
         nn.init.uniform_(self.linear_W_h.bias, a=-k, b=k)
 
     def forward(self, x, hidden_last_t):
+        # import pdb; pdb.set_trace()
         h_t = torch.tanh(self.linear_W(x) + self.linear_W_h(hidden_last_t))
         return h_t
 
@@ -272,31 +273,17 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
                         shape: (generated_seq_len, batch_size)
         """
         print('GENERATE RNN')
-        words = self.embedding(input)
-        samples = []
-        for t in range(generated_seq_len):
-            # state_last_layer = word.cuda()
-            state_last_layer = self.dropout(words)
-            
-            # Input Layer
-            hidden[0] = self.forward_layers[0](state_last_layer, hidden[0])
-
-            # Hidden Layers 
-            for layer in range(1, self.num_layers):
-                state_last_layer = self.dropout(hidden[layer-1].clone()) 
-                hidden[layer] += self.forward_layers[layer](state_last_layer, hidden[layer].clone())
-            
-
-            logits = self.decoder(self.dropout(hidden[self.num_layers-1].clone()))
-            # import pdb; pdb.set_trace()
-            
-            distribution = F.softmax(logits)
-            words = []
-            for d in distribution:
-                words.append(torch.argmax(distribution))
-            samples.append(words)
-            words = torch.cat(words)
-
+        self.seq_len = 1
+        samples = torch.zeros([generated_seq_len, self.batch_size], device=input.device)
+        for i in range(generated_seq_len):
+            logits, hidden = self.forward(input, hidden)
+            soft = F.softmax(logits)
+            # dist = torch.distributions.Categorical(logits)
+            # input = torch.argmax(F.softmax(logits))
+            import pdb; pdb.set_trace()
+            x=torch.multinomial(soft,self.batch_size).squeeze()
+            samples[i] = x
+            print(x)
         return samples
 
 class GRU_Hidden(nn.Module):
