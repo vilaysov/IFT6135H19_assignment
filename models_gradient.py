@@ -235,11 +235,13 @@ class RNN(nn.Module):  # Implement a stacked vanilla RNN with Tanh nonlinearitie
             
             # Input Layer
             hiddens[t][0] += self.forward_layers[0](state_last_layer, hiddens[t-1][0].clone())
+            hiddens[t][0].requires_grad()
 
             # Hidden Layers 
             for layer in range(1, self.num_layers):
                 state_last_layer = self.dropout(hiddens[t][layer-1].clone()) 
                 hiddens[t][layer] += self.forward_layers[layer](state_last_layer, hiddens[t-1][layer].clone())
+                hiddens[t][layer].requires_grad()
 
             logits[t - 1] += self.decoder(self.dropout(hiddens[t][self.num_layers-1].clone()))
 
