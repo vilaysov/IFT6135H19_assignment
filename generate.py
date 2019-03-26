@@ -185,12 +185,37 @@ print("Load model parameters, best_params.pt")
 dir = args.save_dir
 bp_path = os.path.join(dir, 'best_params.pt')
 model.load_state_dict(torch.load(bp_path))
+txt_path = os.path.join(dir, '_generate.txt')
 model.eval()
-inputs = torch.LongTensor(20).random_(0, model.vocab_size).to(device)
+nb_sentence = 20
+inputs = torch.LongTensor(nb_sentence).random_(0, model.vocab_size).to(device)
+generated_seq_len= model.seq_len
+f= open(txt_path,"w+")
+f.write("==============seq_len===============\n")
 hidden = repackage_hidden(model.init_hidden())
-generated_seq_len=20
 samples = model.generate(inputs, hidden.to(device), generated_seq_len)
-sentence = ""
-for t in range(generated_seq_len):
-    sentence += id_2_word[samples[0][t].data.item()] + ' '
-print('samples 1 : ', sentence)
+# import pdb; pdb.set_trace()
+for i in range(nb_sentence):
+    sentence = ""
+    for t in range(generated_seq_len):
+        sentence += id_2_word[samples[t][i].data.item()] + ' '
+    
+    f.write("---------------------This is line %d\r\n" % (i+1))
+    f.write(sentence + '\n')
+
+f.write("==============seq_len * 2===============\n")
+inputs = torch.LongTensor(nb_sentence).random_(0, model.vocab_size).to(device)
+generated_seq_len= (generated_seq_len * 2)
+print('generated_seq_len', generated_seq_len)
+f.write("---------------------This is line %d\r\n" % (i+1))
+hidden = repackage_hidden(model.init_hidden())
+samples = model.generate(inputs, hidden.to(device), generated_seq_len)
+for i in range(nb_sentence):
+    sentence = ""
+    for t in range(generated_seq_len):
+        sentence += id_2_word[samples[t][i].data.item()] + ' '    
+
+    f.write("---------------------This is line %d\r\n" % (i+1))
+    f.write(sentence + '\n')
+
+f.close() 

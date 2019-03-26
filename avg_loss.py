@@ -311,7 +311,7 @@ def plot_training_history(loss_hist, plot_path):
       # Loss Curves
     plt.figure(figsize=[8,6])
     plt.plot(loss_hist,'b',linewidth=2.0)
-    plt.xlabel('Time-step (t) ',fontsize=16)
+    plt.xlabel('Wall-Clock Time ',fontsize=16)
     plt.ylabel('Loss',fontsize=16)
     plt.title('Loss Curves of a Batch',fontsize=20, fontweight='bold')
     plt.savefig(plot_path)

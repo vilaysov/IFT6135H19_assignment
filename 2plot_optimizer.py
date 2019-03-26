@@ -11,32 +11,46 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def plot_training_history(train_loss_hist, valid_loss_hist, plot_path):
+def plot_training_history(ADAM_loss_hist, SGD_loss_hist, SGD_LR_SCH_loss_hist, plot_path):
       # Loss Curves
     plt.figure(figsize=[8,6])
-    plt.plot(train_loss_hist,'r',linewidth=2.0)
-    plt.plot(valid_loss_hist,'b',linewidth=2.0)
-    plt.legend(['Training ppl', 'Validation ppl'],fontsize=18)
+    plt.plot(ADAM_loss_hist,'r',linewidth=2.0)
+    plt.plot(SGD_loss_hist,'b',linewidth=2.0)
+    plt.plot(SGD_LR_SCH_loss_hist,'v',linewidth=2.0)
+    plt.legend(['RNN ppl', 'GRU ppl', 'TRANSFORMER ppl'],fontsize=18)
     plt.xlabel('Time-step (t) ',fontsize=16)
     plt.ylabel('Perplexity',fontsize=16)
-    plt.title('Perplexity Curves',fontsize=20, fontweight='bold')
+    plt.title('Perplexity Curves of Multiple Architecture',fontsize=20, fontweight='bold')
     plt.savefig(plot_path)
-
-def plot_training_history_wc(train_loss_hist, valid_loss_hist, plot_path):
+  
+def plot_training_history_wc(dir, ADAM_loss_hist, SGD_loss_hist, SGD_LR_SCH_loss_hist, plot_path):
       # Loss Curves
     plt.figure(figsize=[8,6])
-    train = []
-    valid = []
-    for x in range(40):
-          time = 161.07048439979553
-          train.append(x * time)
-          valid.append(x * time)
-    plt.plot(train, train_loss_hist,'r',linewidth=2.0)
-    plt.plot(valid, valid_loss_hist,'b',linewidth=2.0)
-    plt.legend(['Training ppl', 'Validation ppl'],fontsize=18)
-    plt.xlabel('Wall-Clock Time (t) ',fontsize=16)
+    rnn = []
+    gru = []
+    tra = []
+    if dir == 'adam_plot':
+      for x in range(40):
+            rnn.append(x * 176.53509736061096)
+            gru.append(x * 244.4788110256195)
+            tra.append(x * 58.293203830718994)
+    elif dir == 'sgd_plot':
+      for x in range(40):
+            rnn.append(x * 170.41701912879944)
+            gru.append(x * 236.4971776008606)
+            tra.append(x * 122.8176200389862)
+    elif dir == 'sch_plot':
+      for x in range(40):
+            rnn.append(x * 97.27239632606506)
+            gru.append(x * 236.47585034370422)
+            tra.append(x * 161.07048439979553)
+    plt.plot(rnn, ADAM_loss_hist,'r',linewidth=2.0)
+    plt.plot(gru, SGD_loss_hist,'b',linewidth=2.0)
+    plt.plot(tra, SGD_LR_SCH_loss_hist,'v',linewidth=2.0)
+    plt.legend(['RNN ppl', 'GRU ppl', 'TRANSFORMER ppl'],fontsize=18)
+    plt.xlabel('Wall-Clock time (t) ',fontsize=16)
     plt.ylabel('Perplexity',fontsize=16)
-    plt.title('Perplexity Curves',fontsize=20, fontweight='bold')
+    plt.title('Perplexity Curves of Multiple Architecture',fontsize=20, fontweight='bold')
     plt.savefig(plot_path)
 
 ## READ_ME: s_exec python plot.py --save_dir=RNN_4-1
@@ -97,14 +111,30 @@ argsdict = args.__dict__
 argsdict['code_file'] = sys.argv[0]
 
 
-dir = args.save_dir
-lc_path = os.path.join(dir, 'learning_curves.npy')
-plot_path = os.path.join(dir, 'learning_curves_plot_epoch.png')
-print('\nDONE\n\Load learning curves of ' + lc_path)
+dirs = ['adam_plot', 'sgd_plot', 'sch_plot']
+y = ['RNN', 'GRU', 'TRANSFORMER']
+for dir in dirs:
+  x = dict()
+  for name in y:
+    lc_path = os.path.join(dir, 'learning_curves_' + name + '.npy')
+    plot_path = os.path.join(dir, dir + 'learning_curves_plot_epoch.png')
+    x[name] = np.load(lc_path)[()]
+  print('\nDONE\n\Load learning curves of ' + lc_path)
 
-x = np.load(lc_path)[()]
+  # x = np.load(lc_path)[()]
 
-epoch = 0
-plot_training_history(x['train_ppls'], x['val_ppls'], plot_path)
-plot_path = os.path.join(dir, 'learning_curves_plot_wc.png')
-plot_training_history_wc(x['train_ppls'], x['val_ppls'], plot_path)
+  epoch = 0
+  plot_training_history(x['RNN']['val_ppls'], x['GRU']['val_ppls'], x['TRANSFORMER']['val_ppls'], plot_path)
+
+for dir in dirs:
+  x = dict()
+  for name in y:
+    lc_path = os.path.join(dir, 'learning_curves_' + name + '.npy')
+    plot_path = os.path.join(dir, dir + 'learning_curves_plot_WL.png')
+    x[name] = np.load(lc_path)[()]
+  print('\nDONE\n\Load learning curves of ' + lc_path)
+
+  # x = np.load(lc_path)[()]
+
+  epoch = 0
+  plot_training_history_wc(dir, x['RNN']['val_ppls'], x['GRU']['val_ppls'], x['TRANSFORMER']['val_ppls'], plot_path)
